@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { IonContent, IonIcon } from '@ionic/angular/standalone';
 
-import { buildKingdomSample } from '../../core/debug/sample-books';
+import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
 import type { FilterSettings } from '../../core/models/settings.model';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { BookstoreService } from '../../core/services/bookstore.service';
@@ -218,11 +218,9 @@ export class ViewerPage {
   public readonly naturalSize = signal<{ width: number; height: number } | null>(null);
 
   constructor() {
-    effect(() => {
-      if (this.bookstore.state().book === null) {
-        this.bookstore.openBook(buildKingdomSample());
-      }
-    });
+    if (this.bookstore.state().book === null) {
+      this.bookstore.openBook(buildHxHChapterOneSample());
+    }
 
     effect(() => {
       const url = this.currentPageUrl();
@@ -239,18 +237,16 @@ export class ViewerPage {
       };
       img.src = url;
     });
-
-    // Recenter only on real page / fit-zoom changes. The reset body reads
-    // hostRect, naturalSize and wheel-zoom — gesture-variable signals — so
-    // wrap it in untracked() to keep those OUT of the effect's dependency
-    // set. Otherwise every pointermove re-runs this effect and clobbers the
-    // relative pan offset back to its absolute centered value.
+    // Recenter only when the display geometry changes. Page-flip owns page
+    // turns; reacting to its current-index signal here causes a full Angular
+    // update at the end of every animation.
     effect(() => {
-      this.flip.currentIndex();
       this.settings.settings().display.zoom;
       this.settings.settings().display.pageLayout;
       untracked(() => {
-        this.resetPan();
+        if (this.panOffsetX() !== 0 || this.panOffsetY() !== 0) {
+          this.resetPan();
+        }
         this.stopMomentum();
       });
     });
@@ -689,17 +685,10 @@ export class ViewerPage {
     return rtl ? rightOnScreen : leftOnScreen;
   }
 
-  /** Re-center the page; small (zoomed-out) pages center in the stage. */
+  /** Reset panning; PageFlip centers the book inside its canvas at fit zoom. */
   private resetPan(): void {
-    const stage = this.hostRect();
-    const eff = this.effectivePageSize();
-    if (stage !== null && eff !== null) {
-      this.panOffsetX.set(Math.max(0, (stage.width - eff.width) / 2));
-      this.panOffsetY.set(Math.max(0, (stage.height - eff.height) / 2));
-    } else {
-      this.panOffsetX.set(0);
-      this.panOffsetY.set(0);
-    }
+    this.panOffsetX.set(0);
+    this.panOffsetY.set(0);
   }
 
   private clearHoldTimer(): void {

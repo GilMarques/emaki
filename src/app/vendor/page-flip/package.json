@@ -1,7 +1,7 @@
 {
   "name": "openviewer-page-flip",
   "version": "1.0.0",
-  "description": "Vendored + patched StPageFlip (page-flip) ESM build. Patch: Flip.stopMove always completes a released USER_FOLD fold from its current position instead of snapping back.",
+  "description": "Vendored + patched StPageFlip (page-flip) ESM build. Patches: Flip.stopMove always completes a released USER_FOLD fold from its current position, the built-in spine shadow is widened to overlap its gradients more closely, and image onload handlers are registered before source assignment to avoid loader flashes.",
   "main": "./page-flip.module.js",
   "module": "./page-flip.module.js",
   "types": "./index.d.ts",

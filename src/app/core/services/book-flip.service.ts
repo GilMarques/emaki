@@ -2,11 +2,20 @@ import { Injectable, inject, signal } from '@angular/core';
 
 import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
 
-import type { Book } from '../models/book.model';
+import type { Book, Page } from '../models/book.model';
 import type { ZoomMode } from '../models/settings.model';
 import { BookstoreService } from './bookstore.service';
 
 type NaturalSize = { readonly width: number; readonly height: number };
+type LoadedImage = {
+  readonly natural: NaturalSize;
+  readonly image: HTMLImageElement | null;
+};
+type RenderedPages = {
+  readonly urls: readonly string[];
+  readonly logicalIndexByRenderedIndex: readonly number[];
+  readonly renderedIndexByLogicalIndex: readonly number[];
+};
 
 /** Page-flip state machine values delivered by the lib's `changeState` event. */
 export type FlipGestureState = 'user_fold' | 'fold_corner' | 'flipping' | 'read';
@@ -37,6 +46,8 @@ export class BookFlipService {
   private instance: PageFlip | null = null;
   private host: HTMLElement | null = null;
   private mountGeneration = 0;
+  private renderedIndexByLogicalIndex: readonly number[] = [];
+  private logicalIndexByRenderedIndex: readonly number[] = [];
 
   /** Latest page-flip state from the lib's `changeState` event. */
   private readonly _flipState = signal<FlipGestureState | null>(null);
@@ -68,11 +79,8 @@ export class BookFlipService {
     zoom: ZoomMode = 'fit-screen',
   ): void {
     const pageIndex = Math.max(0, Math.min(this._currentIndex(), book.pages.length - 1));
-    const url = book.pages[pageIndex]?.url ?? book.pages[0]?.url;
-    if (url === undefined) return;
-    // Size the whole book from a stable reference page (the first), not the
-    // current one, so fit modes apply consistently book-wide.
-    const fitUrl = book.pages[0]?.url ?? url;
+    const pageUrls = book.pages.map((page) => page.url);
+    if (pageUrls.length === 0) return;
 
     this.unmount();
     this.host = host;
@@ -80,7 +88,7 @@ export class BookFlipService {
 
     const generation = ++this.mountGeneration;
 
-    void this.loadImageNaturalSize(fitUrl).then((natural) => {
+    void Promise.all(pageUrls.map((pageUrl) => this.loadImageNaturalSize(pageUrl))).then((loadedImages) => {
       if (generation !== this.mountGeneration || this.host !== host) return;
       if (!host.isConnected) return;
 
@@ -88,13 +96,19 @@ export class BookFlipService {
       const containerH = host.clientHeight;
       if (containerW <= 0 || containerH <= 0) return;
 
+      const natural = loadedImages[0]?.natural ?? { width: 800, height: 1200 };
       const pageSize = computePageDimensions(containerW, containerH, natural, zoom, layout);
+      const rendered = buildRenderedPages(book.pages, loadedImages, layout, pageSize);
+      this.logicalIndexByRenderedIndex = rendered.logicalIndexByRenderedIndex;
+      this.renderedIndexByLogicalIndex = rendered.renderedIndexByLogicalIndex;
       this._bookPageSize.set(pageSize);
 
       const settings: Partial<FlipSetting> = {
         width: pageSize.width,
         height: pageSize.height,
-        startPage: pageIndex,
+        startPage: this.renderedIndexByLogicalIndex[pageIndex] ?? 0,
+        // A book's first page is always a standalone cover in landscape mode.
+        showCover: true,
         showPageCorners: true,
         disableFlipByClick: false,
         ...(layout === 'single'
@@ -110,7 +124,7 @@ export class BookFlipService {
       };
 
       const pf = new PageFlip(host, settings);
-      pf.loadFromImages(book.pages.map((p) => p.url));
+      pf.loadFromImages([...rendered.urls]);
 
       pf.on('flip', (e) => {
         if (typeof e.data === 'number') {
@@ -118,8 +132,8 @@ export class BookFlipService {
         }
       });
 
-      // Mirror the lib's state machine (user_fold → fold_corner → flipping →
-      // read) so the viewer can gate gesture handling on it.
+      // Mirror the lib's state machine (user_fold → fold_corner → flipping → read)
+      // so the viewer can gate gesture handling on it.
       pf.on('changeState', (e) => {
         const s = e.data;
         if (s === 'user_fold' || s === 'fold_corner' || s === 'flipping' || s === 'read') {
@@ -138,6 +152,8 @@ export class BookFlipService {
     this.mountGeneration++;
     this._flipState.set(null);
     this._bookPageSize.set(null);
+    this.logicalIndexByRenderedIndex = [];
+    this.renderedIndexByLogicalIndex = [];
     if (this.instance === null) return;
     try {
       // Do NOT call PageFlip.destroy() — it removes the host from the DOM.
@@ -161,7 +177,8 @@ export class BookFlipService {
 
   /** Imperative nav — used by the bottom-sheet progress component. */
   public turnToPage(index: number): void {
-    this.instance?.turnToPage(index);
+    const renderedIndex = this.renderedIndexByLogicalIndex[index] ?? index;
+    this.instance?.turnToPage(renderedIndex);
   }
 
   /** Imperative nav with the curl animation. */
@@ -231,26 +248,114 @@ export class BookFlipService {
     host.style.removeProperty('display');
   }
 
-  private loadImageNaturalSize(url: string): Promise<NaturalSize> {
+  private loadImageNaturalSize(url: string): Promise<LoadedImage> {
     return new Promise((resolve) => {
       const img = new Image();
       img.decoding = 'async';
       img.onload = () => {
         resolve({
-          width: Math.max(1, img.naturalWidth),
-          height: Math.max(1, img.naturalHeight),
+          natural: {
+            width: Math.max(1, img.naturalWidth),
+            height: Math.max(1, img.naturalHeight),
+          },
+          image: img,
         });
       };
-      img.onerror = () => resolve({ width: 800, height: 1200 });
+      img.onerror = () => {
+        resolve({ natural: { width: 800, height: 1200 }, image: null });
+      };
       img.src = url;
     });
   }
 
   /** Keep BookstoreService in sync so magnifier / progress track the visible page. */
   private syncPageIndex(index: number): void {
-    this._currentIndex.set(index);
-    this.bookstore.goTo(index);
+    const logicalIndex = this.logicalIndexByRenderedIndex[index] ?? index;
+    this._currentIndex.set(logicalIndex);
+    this.bookstore.goTo(logicalIndex);
   }
+}
+
+
+function buildRenderedPages(
+  pages: readonly Page[],
+  loadedImages: readonly LoadedImage[],
+  layout: 'single' | 'double',
+  pageSize: { readonly width: number; readonly height: number },
+): RenderedPages {
+  const urls: string[] = [];
+  const logicalIndexByRenderedIndex: number[] = [];
+  const renderedIndexByLogicalIndex: number[] = [];
+  let pagesSinceCover = 0;
+
+  for (const [logicalIndex, page] of pages.entries()) {
+    const loaded = loadedImages[logicalIndex];
+    const natural = loaded?.natural ?? { width: 800, height: 1200 };
+    const spansTwoPages =
+      layout === 'double' && logicalIndex > 0 && natural.width > natural.height && loaded?.image !== null;
+
+    if (logicalIndex === 0) {
+      renderedIndexByLogicalIndex.push(urls.length);
+      urls.push(page.url);
+      logicalIndexByRenderedIndex.push(logicalIndex);
+      continue;
+    }
+
+    // Keep a landscape image at a spread boundary. The filler leaves the
+    // preceding portrait page alone instead of pairing it with a half-page.
+    if (spansTwoPages && pagesSinceCover % 2 === 1) {
+      urls.push(createBlankPageUrl(pageSize));
+      logicalIndexByRenderedIndex.push(logicalIndex - 1);
+      pagesSinceCover++;
+    }
+
+    renderedIndexByLogicalIndex.push(urls.length);
+    if (spansTwoPages) {
+      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'left'));
+      logicalIndexByRenderedIndex.push(logicalIndex);
+      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'right'));
+      logicalIndexByRenderedIndex.push(logicalIndex);
+      pagesSinceCover += 2;
+    } else {
+      urls.push(page.url);
+      logicalIndexByRenderedIndex.push(logicalIndex);
+      pagesSinceCover++;
+    }
+  }
+
+  return { urls, logicalIndexByRenderedIndex, renderedIndexByLogicalIndex };
+}
+
+function createBlankPageUrl(pageSize: { readonly width: number; readonly height: number }): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pageSize.width}" height="${pageSize.height}"><rect width="100%" height="100%" fill="white"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function createLandscapeHalfUrl(
+  image: HTMLImageElement,
+  natural: NaturalSize,
+  pageSize: { readonly width: number; readonly height: number },
+  side: 'left' | 'right',
+): string {
+  const pageWidth = Math.max(1, Math.round(pageSize.width));
+  const pageHeight = Math.max(1, Math.round(pageSize.height));
+  const totalWidth = pageWidth * 2;
+  const scale = Math.min(totalWidth / natural.width, pageHeight / natural.height);
+  const imageWidth = natural.width * scale;
+  const imageHeight = natural.height * scale;
+  const imageX = (totalWidth - imageWidth) / 2;
+  const imageY = (pageHeight - imageHeight) / 2;
+  const viewX = side === 'left' ? 0 : pageWidth;
+  const canvas = document.createElement('canvas');
+  canvas.width = pageWidth;
+  canvas.height = pageHeight;
+  const context = canvas.getContext('2d');
+  if (context === null) return image.src;
+
+  context.fillStyle = 'white';
+  context.fillRect(0, 0, pageWidth, pageHeight);
+  context.drawImage(image, imageX - viewX, imageY, imageWidth, imageHeight);
+  return canvas.toDataURL('image/jpeg', 0.92);
 }
 
 /** Map Display > Zoom to page-flip page dimensions (per-page leaf size). */

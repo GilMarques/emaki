@@ -9,12 +9,20 @@
     (pointerup)="onStagePointerUp($event)"
     (pointercancel)="onStagePointerUp($event)"
   >
-    <ov-book-spread
-      [book]="openBook()"
-      [style.transform]="panTransform()"
-      [style.transform-origin]="'0 0'"
-    />
+    @if (openBook() !== null) {
+      <ov-book-spread
+        [book]="openBook()"
+        [style.transform]="panTransform()"
+        [style.transform-origin]="'0 0'"
+      />
+    } @else {
+      <div class="empty-state">
+        <h1>No book open</h1>
+        <p>Choose a book from File Browser to start reading.</p>
+      </div>
+    }
   </div>
+
 
   <ov-magnifier
     [active]="magnifierActive()"

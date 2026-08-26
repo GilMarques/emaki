@@ -14,35 +14,32 @@ import type { Book } from '../models/book.model';
  * list below is the safe default.
  *
  * To use:
- *   import { SAMPLE_BOOKS, buildKingdomSample } from './sample-books';
- *   bookstore.openBook(buildKingdomSample()); // runtime, dev only
+ *   import { SAMPLE_BOOKS, buildHxHChapterOneSample } from './sample-books';
+ *   bookstore.openBook(buildHxHChapterOneSample()); // runtime, dev only
  */
 export const SAMPLE_BOOKS: readonly Book[] = [];
 
 /**
- * Build a `Book` from the local Kingdom/c001 sample folder.
+ * Build a `Book` from the local HxH volume 1, chapter 1 sample folder.
  *
- * Files are listed 001..063. URL pattern is `/assets/sample/Kingdom/c001/XXX.jpg`.
- * Page index is 0-based; label is the original filename for debugging.
+ * Files are listed 01..33. Page index is 0-based; label is the original
+ * filename for debugging.
  */
-export function buildKingdomSample(): Book {
+export function buildHxHChapterOneSample(): Book {
   const filenames: readonly string[] = [
-    '001.jpg', '002.jpg', '003.jpg', '004.jpg', '005.jpg', '006.jpg', '007.jpg',
-    '008.jpg', '009.jpg', '010.jpg', '011.jpg', '012.jpg', '013.jpg', '014.jpg',
-    '015.jpg', '016.jpg', '017.jpg', '018.jpg', '019.jpg', '020.jpg', '021.jpg',
-    '022.jpg', '023.jpg', '024.jpg', '025.jpg', '026.jpg', '027.jpg', '028.jpg',
-    '029.jpg', '030.jpg', '031.jpg', '032.jpg', '033.jpg', '034.jpg', '035.jpg',
-    '036.jpg', '037.jpg', '038.jpg', '039.jpg', '040.jpg', '041.jpg', '042.jpg',
-    '043.jpg', '044.jpg', '045.jpg', '046.jpg', '047.jpg', '048.jpg', '049.jpg',
-    '050.jpg', '051.jpg', '052.jpg', '053.jpg', '054.jpg', '055.jpg', '056.jpg',
-    '057.jpg', '058.jpg', '059.jpg', '060.jpg', '061.jpg', '062.jpg', '063.jpg',
+    '01.jpg', '02.jpg', '03.jpg', '04.jpg', '05.jpg', '06.jpg', '07.jpg',
+    '08.jpg', '09.jpg', '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg',
+    '15.jpg', '16.jpg', '17.jpg', '18.jpg', '19.jpg', '20.jpg', '21.jpg',
+    '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg', '28.jpg',
+    '29.jpg', '30.jpg', '31.jpg', '32.jpg', '33.jpg',
   ];
+  const root = 'assets/sample/HxH/Vol.01 Ch.0001 (en) [Nexgear]';
   return {
-    id: 'sample:kingdom:c001',
-    title: 'Kingdom — Chapter 1 (sample)',
+    id: 'sample:hxh:vol01:ch0001',
+    title: 'Hunter × Hunter — Chapter 1 (sample)',
     pages: filenames.map((name, index) => ({
       index,
-      url: `assets/sample/Kingdom/c001/${name}`,
+      url: `${root}/${name}`,
       label: name,
     })),
   };

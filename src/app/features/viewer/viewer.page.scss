@@ -3,6 +3,7 @@
   height: 100%;
 }
 
+
 ion-content {
   --background: #111;
 }
@@ -32,6 +33,25 @@ ov-book-spread {
   display: block;
   min-height: 0;
   will-change: transform;
+}
+
+.empty-state {
+  align-self: center;
+  margin: auto;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: center;
+}
+
+.empty-state h1 {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: 20px;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 14px;
 }
 
 /* Discrete, transparent, centered-top trigger. Touch target is 44x44
