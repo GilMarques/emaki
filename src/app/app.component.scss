@@ -4,3 +4,7 @@ ion-modal.reader-sheet {
   --width: 100%;
   --box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45);
 }
+
+ion-modal.reader-sheet::part(handle) {
+  width: 25%;
+}
