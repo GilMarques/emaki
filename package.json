@@ -5,11 +5,12 @@
   "homepage": "https://ionicframework.com/",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
+    "start": "node scripts/gen-preset-books.mjs && ng serve",
+    "build": "node scripts/gen-preset-books.mjs && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "presets:gen": "node scripts/gen-preset-books.mjs"
   },
   "private": true,
   "dependencies": {

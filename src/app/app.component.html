@@ -1,64 +1,18 @@
 <ion-app>
-  <ion-menu contentId="main-content" type="overlay">
-      <ion-content>
-        <ion-list>
-          @for (item of library; track item.url) {
-            <ion-menu-toggle auto-hide="false">
-              <ion-item
-                routerDirection="root"
-                [routerLink]="[item.url]"
-                lines="none"
-                detail="false"
-                routerLinkActive="selected"
-              >
-                <ion-icon
-                  aria-hidden="true"
-                  slot="start"
-                  [ios]="item.icon + '-outline'"
-                  [md]="item.icon + '-sharp'"
-                ></ion-icon>
-                <ion-label>{{ item.title }}</ion-label>
-              </ion-item>
-            </ion-menu-toggle>
-          }
-          @for (item of settingsMenu; track item.url) {
-            <ion-menu-toggle auto-hide="false">
-              <ion-item
-                routerDirection="root"
-                [routerLink]="[item.url]"
-                lines="none"
-                detail="false"
-                routerLinkActive="selected"
-              >
-                <ion-icon
-                  aria-hidden="true"
-                  slot="start"
-                  [ios]="item.icon + '-outline'"
-                  [md]="item.icon + '-sharp'"
-                ></ion-icon>
-                <ion-label>{{ item.title }}</ion-label>
-              </ion-item>
-            </ion-menu-toggle>
-          }
-        </ion-list>
-      </ion-content>
-
-      <ion-footer class="donate-footer">
-        <ion-button
-          expand="block"
-          color="tertiary"
-          disabled="true"
-          aria-label="Donate (not configured)"
-        >
-          <ion-icon
-            aria-hidden="true"
-            slot="start"
-            ios="heart-outline"
-            md="heart-sharp"
-          ></ion-icon>
-          Donate
-        </ion-button>
-      </ion-footer>
-    </ion-menu>
   <ion-router-outlet id="main-content"></ion-router-outlet>
+
+  <ion-modal
+    class="reader-sheet"
+    [isOpen]="isReaderOpen()"
+    [breakpoints]="[0, 1]"
+    [initialBreakpoint]="1"
+    handle="visible"
+    swipeToClose="true"
+    [canDismiss]="true"
+    (didDismiss)="closeReader()"
+  >
+    <ng-template>
+      <ov-viewer />
+    </ng-template>
+  </ion-modal>
 </ion-app>

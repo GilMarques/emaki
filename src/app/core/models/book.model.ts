@@ -16,6 +16,15 @@ export interface Page {
 }
 
 /**
+ * Where a book's pages come from. v1 only has `preset` (a debug/web bundle
+ * under `assets/`). `folder` is the later real-device shape (Tauri desktop,
+ * Android SAF). Add `cbz` / `pdf` here when those formats land.
+ */
+export type BookSource =
+  | { readonly type: 'preset'; basePath: string }
+  | { readonly type: 'folder'; uri: string };
+
+/**
  * A book = a folder (or archive root) containing ordered pages.
  * Title is best-effort — folder name for now.
  */
@@ -23,6 +32,9 @@ export interface Book {
   readonly id: string;
   readonly title: string;
   readonly pages: readonly Page[];
+  /** First page URL, used as the shelf cover thumbnail. */
+  readonly coverUrl?: string;
+  readonly source: BookSource;
 }
 
 /** The container of an open book. Empty when no book is open. */

@@ -1,6 +1,7 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import type { Book, OpenBookState, Page } from '../models/book.model';
+import { ShelfService } from './shelf.service';
 
 /**
  * Holds the currently-open book + current page index in memory as signals.
@@ -14,6 +15,7 @@ import type { Book, OpenBookState, Page } from '../models/book.model';
  */
 @Injectable({ providedIn: 'root' })
 export class BookstoreService {
+  private readonly shelf = inject(ShelfService);
   private readonly _state = signal<OpenBookState>({ book: null });
 
   /** Reactive snapshot of the open-book state. */
@@ -41,7 +43,17 @@ export class BookstoreService {
   /** Open a book. Resets the current index to 0 and the zoom to 1. */
   public openBook(book: Book): void {
     this._zoom.set(1);
+    this.shelf.setProgress(book.id, 0);
     this._state.set({ book, currentIndex: 0 });
+  }
+
+  /** Open a registered book by id, resuming at its saved progress. */
+  public openById(id: string): void {
+    const book = this.shelf.byId(id);
+    if (book === undefined) return;
+    this._zoom.set(1);
+    const start = Math.max(0, Math.min(this.shelf.progressFor(id), book.pages.length - 1));
+    this._state.set({ book, currentIndex: start });
   }
 
   /** Close the current book. */
@@ -49,12 +61,30 @@ export class BookstoreService {
     this._state.set({ book: null });
   }
 
+  /** Advance to the next book in the shelf, if there is one. */
+  public openNext(): void {
+    const s = this._state();
+    if (s.book === null) return;
+    const nextId = this.shelf.nextBookId(s.book.id);
+    if (nextId !== null) this.openById(nextId);
+  }
+
+  /** Go to the previous book in the shelf, if there is one. */
+  public openPrev(): void {
+    const s = this._state();
+    if (s.book === null) return;
+    const prevId = this.shelf.prevBookId(s.book.id);
+    if (prevId !== null) this.openById(prevId);
+  }
+
   /** Advance to the next page. No-op if there isn't one. */
   public next(): void {
     const s = this._state();
     if (s.book === null) return;
     if (s.currentIndex >= s.book.pages.length - 1) return;
-    this._state.set({ book: s.book, currentIndex: s.currentIndex + 1 });
+    const idx = s.currentIndex + 1;
+    this.shelf.setProgress(s.book.id, idx);
+    this._state.set({ book: s.book, currentIndex: idx });
   }
 
   /** Go to the previous page. No-op if there isn't one. */
@@ -62,7 +92,9 @@ export class BookstoreService {
     const s = this._state();
     if (s.book === null) return;
     if (s.currentIndex <= 0) return;
-    this._state.set({ book: s.book, currentIndex: s.currentIndex - 1 });
+    const idx = s.currentIndex - 1;
+    this.shelf.setProgress(s.book.id, idx);
+    this._state.set({ book: s.book, currentIndex: idx });
   }
 
   /** Jump to an absolute page index. Out-of-range indices clamp. */
@@ -70,6 +102,7 @@ export class BookstoreService {
     const s = this._state();
     if (s.book === null) return;
     const clamped = Math.max(0, Math.min(index, s.book.pages.length - 1));
+    this.shelf.setProgress(s.book.id, clamped);
     this._state.set({ book: s.book, currentIndex: clamped });
   }
 

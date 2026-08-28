@@ -1,15 +1,80 @@
 <ion-header>
   <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-menu-button></ion-menu-button>
-    </ion-buttons>
     <ion-title>Bookshelf</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="displayOpen.set(true)">
+        <ion-icon slot="start" name="options-outline"></ion-icon>
+        Display
+      </ion-button>
+      <ion-button (click)="filtersOpen.set(true)">
+        <ion-icon slot="start" name="color-filter-outline"></ion-icon>
+        Filters
+      </ion-button>
+      <ion-button (click)="scan()" [disabled]="scanning()">
+        <ion-icon slot="start" name="scan-outline"></ion-icon>
+        Scan
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <div class="placeholder">
-    <h2>Bookshelf</h2>
-    <p>Your library will appear here once you open a book.</p>
-  </div>
+  @if (scanning()) {
+    <div class="status">
+      <ion-spinner name="dots"></ion-spinner>
+      <ion-text>Scanning… {{ booksFound() }}</ion-text>
+    </div>
+  } @else if (books().length === 0) {
+    <div class="placeholder">
+      <h2>No books yet</h2>
+      <p>Tap Scan to register the preset books bundled with the app.</p>
+    </div>
+  } @else {
+    <ion-grid class="shelf">
+      <ion-row>
+        @for (book of books(); track book.id) {
+          <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
+            <ion-card class="book-card" button (click)="openBook(book.id)">
+              <img class="cover" [src]="book.coverUrl" [alt]="book.title" />
+              <ion-card-header>
+                <ion-card-title class="book-title">{{ book.title }}</ion-card-title>
+              </ion-card-header>
+            </ion-card>
+          </ion-col>
+        }
+      </ion-row>
+    </ion-grid>
+  }
 </ion-content>
+
+<ion-modal [isOpen]="filtersOpen()" (didDismiss)="filtersOpen.set(false)">
+  <ng-template>
+    <ion-header>
+      <ion-toolbar>
+        <ion-title>Filters</ion-title>
+        <ion-buttons slot="end">
+          <ion-button (click)="filtersOpen.set(false)">Done</ion-button>
+        </ion-buttons>
+      </ion-toolbar>
+    </ion-header>
+    <ion-content>
+      <ov-filters-settings />
+    </ion-content>
+  </ng-template>
+</ion-modal>
+
+<ion-modal [isOpen]="displayOpen()" (didDismiss)="displayOpen.set(false)">
+  <ng-template>
+    <ion-header>
+      <ion-toolbar>
+        <ion-title>Display</ion-title>
+        <ion-buttons slot="end">
+          <ion-button (click)="displayOpen.set(false)">Done</ion-button>
+        </ion-buttons>
+      </ion-toolbar>
+    </ion-header>
+    <ion-content>
+      <ov-display-settings />
+    </ion-content>
+  </ng-template>
+</ion-modal>

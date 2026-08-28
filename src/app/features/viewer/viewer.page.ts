@@ -17,10 +17,10 @@ import type { FilterSettings } from '../../core/models/settings.model';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { BookstoreService } from '../../core/services/bookstore.service';
 import { MagnifierStateService } from '../../core/services/magnifier-state.service';
+import { ShelfService } from '../../core/services/shelf.service';
 import { SettingsService } from '../../core/services/settings.service';
 import { BookSpreadComponent } from './book-spread.component';
 import { MagnifierComponent } from './magnifier.component';
-import { QuickActionsModalComponent } from './quick-actions-modal.component';
 
 type GestureAxis = 'horizontal' | 'vertical';
 
@@ -47,7 +47,7 @@ interface PanExtents {
   selector: 'ov-viewer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonContent, IonIcon, BookSpreadComponent, QuickActionsModalComponent, MagnifierComponent],
+  imports: [IonContent, IonIcon, BookSpreadComponent, MagnifierComponent],
   templateUrl: './viewer.page.html',
   styleUrls: ['./viewer.page.scss'],
   host: {
@@ -59,6 +59,7 @@ export class ViewerPage {
   private readonly settings = inject(SettingsService);
   private readonly magnifierState = inject(MagnifierStateService);
   private readonly flip = inject(BookFlipService);
+  private readonly shelf = inject(ShelfService);
 
   /** Open book, or null. Bound to the spread component. */
   public readonly openBook = computed(() => this.bookstore.state().book);
@@ -75,10 +76,6 @@ export class ViewerPage {
 
   /** Reading direction bound to the host `[dir]` attribute. */
   public readonly direction = computed<'ltr' | 'rtl'>(() => this.settings.settings().display.readingDirection);
-
-  /** Local UI state: is the quick-actions modal open? */
-  private readonly _quickActionsOpen = signal(false);
-  public readonly quickActionsOpen = this._quickActionsOpen.asReadonly();
 
   /** Progress string for the future bottom-sheet. */
   public readonly progress = computed(() => {
@@ -219,7 +216,9 @@ export class ViewerPage {
 
   constructor() {
     if (this.bookstore.state().book === null) {
-      this.bookstore.openBook(buildHxHChapterOneSample());
+      const first = this.shelf.books()[0];
+      if (first !== undefined) this.bookstore.openById(first.id);
+      else this.bookstore.openBook(buildHxHChapterOneSample());
     }
 
     effect(() => {
@@ -252,12 +251,25 @@ export class ViewerPage {
     });
   }
 
-  public openQuickActions(): void {
-    this._quickActionsOpen.set(true);
+  /** True when the current book has no further pages — the end-of-book bar shows. */
+  public readonly isLastPage = computed(() => !this.bookstore.hasNext());
+
+  /** Title of the next shelf book, or null if this is the last one. */
+  public readonly nextBookTitle = computed(() => {
+    const s = this.bookstore.state();
+    if (s.book === null) return null;
+    const id = this.shelf.nextBookId(s.book.id);
+    return id === null ? null : (this.shelf.byId(id)?.title ?? null);
+  });
+
+  /** Advance to the next registered book (end-of-book affordance). */
+  public nextBook(): void {
+    this.bookstore.openNext();
   }
 
-  public closeQuickActions(): void {
-    this._quickActionsOpen.set(false);
+  /** Dismiss the reader overlay, returning to the bookshelf underneath. */
+  public closeViewer(): void {
+    this.bookstore.closeBook();
   }
 
   @HostListener('wheel', ['$event'])
@@ -289,6 +301,8 @@ export class ViewerPage {
   // ──────────── Magnifier + page-flip pointer relay ────────────
 
   private static readonly HOLD_MS = 300;
+  /** Downward drag (px) that dismisses the reader when the page fits the height. */
+  private static readonly CLOSE_THRESHOLD = 100;
   /** Horizontal slop before a drag leaves the hold window (vertical uses axis lock only). */
   private static readonly HORIZONTAL_SLOP_PX = 8;
   /** Per-frame velocity decay while coasting after a pan release (~60fps frame). */
@@ -304,6 +318,8 @@ export class ViewerPage {
   private panBaseX = 0;
   private panBaseY = 0;
   private gestureAxis: GestureAxis | null = null;
+  /** True while a downward swipe is being treated as a dismiss gesture. */
+  private closeDrag = false;
   /** Recent pointer samples during a pan — used to derive release velocity. */
   private panSamples: Array<{ x: number; y: number; t: number }> = [];
   private momentumAxis: GestureAxis | null = null;
@@ -390,6 +406,15 @@ export class ViewerPage {
       } else {
         this.zoomTapFlip(event.clientX);
       }
+    } else if (this.closeDrag) {
+      const dy = event.clientY - this.holdStartY;
+      const dx = event.clientX - this.holdStartX;
+      this.closeDrag = false;
+      if (dy > ViewerPage.CLOSE_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+        this.magnifierState.endGesture();
+        this.closeViewer();
+        return;
+      }
     }
 
     this.clearHoldTimer();
@@ -428,10 +453,22 @@ export class ViewerPage {
     }
 
     if (Math.abs(dy) > Math.abs(dx)) {
+      this.clearHoldTimer();
       if (overflowY > 0) {
+        // At the top of a tall page a downward drag can't pan further, so it's
+        // a close gesture (iOS-style top overscroll). Anywhere else it pans.
+        if (this.panOffsetY() >= -1 && dy > 0) {
+          this.gestureAxis = 'vertical';
+          this.closeDrag = true;
+          return;
+        }
         this.beginPanRelay('vertical');
         this.applyPanFromDrag(dx, dy);
+        return;
       }
+      // overflowY <= 0 → page fits the height: a downward drag is a close gesture.
+      this.gestureAxis = 'vertical';
+      this.closeDrag = true;
       return;
     }
 

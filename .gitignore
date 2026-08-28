@@ -69,4 +69,6 @@ testem.log
 .DS_Store
 # Debug sample books (large binaries; regenerate via `npm run samples` if needed)
 /src/assets/sample/
+# Generated preset-book manifest (produced by `npm run presets:gen`)
+/src/assets/preset-books.json
 Thumbs.db

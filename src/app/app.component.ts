@@ -1,58 +1,29 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
-import {
-  IonApp,
-  IonButton,
-  IonContent,
-  IonFooter,
-  IonIcon,
-  IonItem,
-  IonList,
-  IonLabel,
-  IonMenu,
-  IonMenuToggle,
-  IonRouterOutlet,
-} from '@ionic/angular/standalone';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { IonApp, IonRouterOutlet, IonModal } from '@ionic/angular/standalone';
 
 import { SettingsService } from './core/services/settings.service';
-
-type MenuItem = { title: string; url: string; icon: string };
+import { BookstoreService } from './core/services/bookstore.service';
+import { ViewerPage } from './features/viewer/viewer.page';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    RouterLinkActive,
-    IonApp,
-    IonMenu,
-    IonContent,
-    IonList,
-    IonMenuToggle,
-    IonItem,
-    IonIcon,
-    IonLabel,
-    IonRouterOutlet,
-    IonFooter,
-    IonButton,
-  ],
+  imports: [IonApp, IonRouterOutlet, IonModal, ViewerPage],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
 })
 export class AppComponent {
   private readonly settings = inject(SettingsService);
+  private readonly bookstore = inject(BookstoreService);
 
-  public readonly library: readonly MenuItem[] = [
-    { title: 'Viewer', url: '/viewer', icon: 'book' },
-    { title: 'Bookshelf', url: '/bookshelf', icon: 'library' },
-    { title: 'File Browser', url: '/file-browser', icon: 'folder' },
-  ];
+  /** Drives the reader overlay — true whenever a book is open. */
+  public readonly isReaderOpen = computed(() => this.bookstore.state().book !== null);
 
-  public readonly settingsMenu: readonly MenuItem[] = [
-    { title: 'Preferences', url: '/preferences', icon: 'settings' },
-    { title: 'About', url: '/about', icon: 'information-circle' },
-  ];
+  /** Dismiss the reader sheet (handle drag or content swipe-down). */
+  public closeReader(): void {
+    this.bookstore.closeBook();
+  }
 
   constructor() {
     // Apply theme at the document level so every page inherits it.

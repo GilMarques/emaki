@@ -46,6 +46,9 @@ export class BookFlipService {
   private instance: PageFlip | null = null;
   private host: HTMLElement | null = null;
   private mountGeneration = 0;
+  /** Id of the book mounted last, so we only preserve the page across
+   *  layout/zoom remounts — a different book starts at its own progress. */
+  private mountedBookId: string | null = null;
   private renderedIndexByLogicalIndex: readonly number[] = [];
   private logicalIndexByRenderedIndex: readonly number[] = [];
 
@@ -78,7 +81,11 @@ export class BookFlipService {
     layout: 'single' | 'double',
     zoom: ZoomMode = 'fit-screen',
   ): void {
-    const pageIndex = Math.max(0, Math.min(this._currentIndex(), book.pages.length - 1));
+    const sameBook = this.mountedBookId === book.id;
+    const state = this.bookstore.state();
+    const baseIndex = sameBook ? this._currentIndex() : state.book === null ? 0 : state.currentIndex;
+    const pageIndex = Math.max(0, Math.min(baseIndex, book.pages.length - 1));
+    this.mountedBookId = book.id;
     const pageUrls = book.pages.map((page) => page.url);
     if (pageUrls.length === 0) return;
 
@@ -92,9 +99,14 @@ export class BookFlipService {
       if (generation !== this.mountGeneration || this.host !== host) return;
       if (!host.isConnected) return;
 
-      const containerW = host.clientWidth;
-      const containerH = host.clientHeight;
-      if (containerW <= 0 || containerH <= 0) return;
+      // The host may have no size yet when the viewer just opened inside a
+      // modal (layout/enter animation not done). Wait for it instead of
+      // bailing — otherwise the canvas never mounts and the stage stays grey.
+      waitForSize(host).then((size) => {
+        if (size === null) return;
+        if (generation !== this.mountGeneration || this.host !== host) return;
+        const containerW = size.w;
+        const containerH = size.h;
 
       const natural = loadedImages[0]?.natural ?? { width: 800, height: 1200 };
       const pageSize = computePageDimensions(containerW, containerH, natural, zoom, layout);
@@ -144,6 +156,7 @@ export class BookFlipService {
       this.instance = pf;
       this.syncPageIndex(pf.getCurrentPageIndex());
       this._mounted.set(true);
+      });
     });
   }
 
@@ -414,4 +427,30 @@ export function computePageDimensions(
     width: Math.max(1, Math.round(pageW)),
     height: Math.max(1, Math.round(pageH)),
   };
+}
+
+/**
+ * Resolve once `host` has a non-zero box, or null after a short timeout.
+ * The page-flip canvas needs a concrete size to mount; inside a freshly
+ * opened modal the host may not be laid out yet, so we poll a frame at a
+ * time instead of mounting against a 0×0 box (which would render nothing).
+ */
+function waitForSize(host: HTMLElement, timeoutMs = 1500): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const tick = (): void => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (w > 0 && h > 0) {
+        resolve({ w, h });
+        return;
+      }
+      if (performance.now() - start > timeoutMs) {
+        resolve(null);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
 }

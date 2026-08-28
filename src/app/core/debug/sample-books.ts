@@ -37,6 +37,8 @@ export function buildHxHChapterOneSample(): Book {
   return {
     id: 'sample:hxh:vol01:ch0001',
     title: 'Hunter × Hunter — Chapter 1 (sample)',
+    coverUrl: `${root}/${filenames[0]}`,
+    source: { type: 'preset', basePath: root },
     pages: filenames.map((name, index) => ({
       index,
       url: `${root}/${name}`,

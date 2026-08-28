@@ -15,14 +15,13 @@
         [style.transform]="panTransform()"
         [style.transform-origin]="'0 0'"
       />
-    } @else {
-      <div class="empty-state">
-        <h1>No book open</h1>
-        <p>Choose a book from File Browser to start reading.</p>
-      </div>
-    }
-  </div>
-
+     } @else {
+       <div class="empty-state">
+         <h1>No book open</h1>
+         <p>Choose a book from Bookshelf to start reading.</p>
+       </div>
+     }
+   </div>
 
   <ov-magnifier
     [active]="magnifierActive()"
@@ -41,17 +40,19 @@
     <div class="zoom-label" aria-hidden="true">{{ zoomLabel() }}</div>
   }
 
-  <button
-    type="button"
-    class="quick-actions-trigger"
-    aria-label="Open quick actions"
-    (click)="openQuickActions()"
-  >
-    <ion-icon ios="ellipsis-horizontal-circle-outline" md="ellipsis-horizontal-sharp"></ion-icon>
-  </button>
 </ion-content>
 
-<ov-quick-actions-modal
-  [isOpen]="quickActionsOpen()"
-  (didDismiss)="closeQuickActions()"
-/>
+@if (isLastPage()) {
+  <div class="viewer-bar">
+    @if (nextBookTitle(); as title) {
+      <button type="button" class="bar-next" (click)="nextBook()">
+        <ion-icon ios="play-forward-outline" md="play-forward-sharp"></ion-icon>
+        <span>Next: {{ title }}</span>
+      </button>
+    }
+    <button type="button" class="bar-library" (click)="closeViewer()">
+      <ion-icon ios="library-outline" md="library-sharp"></ion-icon>
+      <span>Library</span>
+    </button>
+  </div>
+}
