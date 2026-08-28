@@ -1,3 +1,61 @@
+:host {
+  display: block;
+}
+
+.crumb-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ion-background-color, #fff);
+  border-bottom: 1px solid var(--ion-color-step-100, #e0e0e0);
+}
+
+.crumbs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.up-btn {
+  flex: 0 0 auto;
+  margin: 0;
+  --padding-start: 8px;
+  --padding-end: 8px;
+}
+
+.scan-btn {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Circular checkmark button replacing the sheet modals' "Done" text button. */
+.done-btn {
+  --border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  margin: 0 8px 0 0;
+}
+
+/* Floating Display / Filters buttons pinned to the bottom of the screen. */
+.float-actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+
+  ion-button {
+    pointer-events: auto;
+  }
+}
+
 .status {
   display: flex;
   flex-direction: column;
@@ -27,12 +85,25 @@
 
 .shelf {
   --ion-grid-padding: 12px;
-  padding: 12px;
+  padding: 12px 12px 96px;
 }
 
-.book-card {
+.tile {
   margin: 0;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  transition: background 0.12s ease;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--ion-color-step-50, #f3f3f3);
+    outline: none;
+  }
 }
 
 .cover {
@@ -40,12 +111,27 @@
   width: 100%;
   aspect-ratio: 2 / 3;
   object-fit: cover;
+  border-radius: 6px;
   background: var(--ion-color-step-100, #ddd);
 }
 
-.book-title {
-  font-size: 0.85rem;
+.folder {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  font-size: 64px;
+  color: var(--ion-color-medium, #92949c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ion-color-step-50, #f3f3f3);
+  border-radius: 6px;
+}
+
+.tile-name {
+  width: 100%;
+  font-size: 0.8rem;
   line-height: 1.2;
+  text-align: center;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

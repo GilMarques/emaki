@@ -54,6 +54,7 @@ export type PageTransition = 'none' | 'slide-horizontal' | 'slide-vertical' | 'p
  * filter lands — only nearest-neighbor visibly differs today.
  */
 export type ImageSmoothMethod =
+  | 'none'
   | 'nearest-neighbor'
   | 'averaging'
   | 'bilinear'
@@ -67,10 +68,14 @@ export interface FilterSlider {
   readonly value: number;
 }
 
-/** Discrete-method setting + an enabled flag. Image smooth is the only
- *  filter that takes an enum (sampling method) instead of a number. */
-export interface FilterMethod {
+/** On/off filter with no value. Grayscale is the only one of these today. */
+export interface FilterToggle {
   readonly enabled: boolean;
+}
+
+/** Discrete-method setting. Image smooth is the only filter that takes an
+ *  enum (sampling method) instead of a number; 'none' disables it. */
+export interface FilterMethod {
   readonly method: ImageSmoothMethod;
 }
 
@@ -91,12 +96,9 @@ export interface FilterSettings {
   readonly brightness: FilterSlider;
   readonly blueLight: FilterSlider;
   readonly contrast: FilterSlider;
-  readonly gamma: FilterSlider;
-  readonly grayscale: FilterSlider;
   readonly sepia: FilterSlider;
-  readonly sharpen: FilterSlider;
-  readonly blur: FilterSlider;
   readonly grain: FilterSlider;
+  readonly grayscale: FilterToggle;
   readonly imageSmooth: FilterMethod;
 }
 
@@ -121,13 +123,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     brightness: { enabled: false, value: 100 },
     blueLight: { enabled: false, value: 0 },
     contrast: { enabled: false, value: 100 },
-    gamma: { enabled: false, value: 1.0 },
-    grayscale: { enabled: false, value: 0 },
+    grayscale: { enabled: false },
     sepia: { enabled: false, value: 0 },
-    sharpen: { enabled: false, value: 0 },
-    blur: { enabled: false, value: 0 },
     grain: { enabled: false, value: 0 },
-    imageSmooth: { enabled: false, method: 'bilinear' },
+    imageSmooth: { method: 'none' },
   },
 };
 
@@ -136,14 +135,10 @@ export const FILTER_BOUNDS = {
   brightness: { min: 25, max: 200, step: 5 },
   blueLight: { min: 0, max: 80, step: 5 },
   contrast: { min: 25, max: 200, step: 5 },
-  gamma: { min: 0.5, max: 2.5, step: 0.1 },
-  grayscale: { min: 0, max: 100, step: 5 },
   sepia: { min: 0, max: 100, step: 5 },
-  sharpen: { min: 0, max: 10, step: 0.5 },
-  blur: { min: 0, max: 20, step: 1 },
   grain: { min: 0, max: 100, step: 5 },
 } as const satisfies Record<
-  Exclude<keyof FilterSettings, 'imageSmooth'>,
+  Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>,
   { min: number; max: number; step: number }
 >;
 

@@ -69,9 +69,8 @@ export class ViewerPage {
 
   /** CSS `image-rendering` for the spread — driven by image-smooth setting. */
   public readonly imageRendering = computed(() => {
-    const sm = this.settings.settings().filters.imageSmooth;
-    if (!sm.enabled) return 'auto';
-    return sm.method === 'nearest-neighbor' ? 'pixelated' : 'auto';
+    const method = this.settings.settings().filters.imageSmooth.method;
+    return method === 'nearest-neighbor' ? 'pixelated' : 'auto';
   });
 
   /** Reading direction bound to the host `[dir]` attribute. */
@@ -762,27 +761,15 @@ function buildFilterString(filters: FilterSettings): string {
   const parts: string[] = [];
   if (filters.brightness.enabled) parts.push(`brightness(${filters.brightness.value}%)`);
   if (filters.contrast.enabled) parts.push(`contrast(${filters.contrast.value}%)`);
-  if (filters.gamma.enabled) {
-    const g = filters.gamma.value;
-    const brightness = g <= 1 ? 60 + 40 * (g - 0.5) / 0.5 : 100 + 100 * (g - 1) / 1.5;
-    parts.push(`brightness(${brightness.toFixed(0)}%)`);
-  }
   if (filters.blueLight.enabled && filters.blueLight.value > 0) {
     const s = filters.blueLight.value / 80;
     parts.push(`sepia(${s.toFixed(2)}) hue-rotate(-10deg)`);
   }
-  if (filters.grayscale.enabled && filters.grayscale.value > 0) {
-    parts.push(`grayscale(${filters.grayscale.value}%)`);
+  if (filters.grayscale.enabled) {
+    parts.push('grayscale(100%)');
   }
   if (filters.sepia.enabled && filters.sepia.value > 0) {
     parts.push(`sepia(${filters.sepia.value}%)`);
-  }
-  if (filters.sharpen.enabled && filters.sharpen.value > 0) {
-    const boost = 100 + filters.sharpen.value * 10;
-    parts.push(`contrast(${boost.toFixed(0)}%)`);
-  }
-  if (filters.blur.enabled && filters.blur.value > 0) {
-    parts.push(`blur(${filters.blur.value}px)`);
   }
   if (filters.grain.enabled && filters.grain.value > 0) {
     const jitter = 100 - filters.grain.value / 2;

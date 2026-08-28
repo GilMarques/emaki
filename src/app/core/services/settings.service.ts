@@ -8,6 +8,7 @@ import {
   type DisplaySettings,
   type FilterMethod,
   type FilterSettings,
+  type FilterToggle,
   type FilterSlider,
   type ImageSmoothMethod,
   type InterfaceTheme,
@@ -19,7 +20,7 @@ import {
   type ZoomMode,
 } from '../models/settings.model';
 
-const STORAGE_KEY = 'openviewer:settings:v1';
+const STORAGE_KEY = 'openviewer:settings:v2';
 
 /**
  * Central settings store. Single source of truth for Display + Filters.
@@ -84,13 +85,13 @@ export class SettingsService {
 
   // ──────────────────────── Filter setters ────────────────────────
 
-  public setFilter<K extends keyof FilterSettings>(
+  public setFilter<K extends Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>>(
     key: K,
     enabled: boolean,
     value: number,
   ): void {
-    // Image-smooth is a method, not a slider — refuse to write into it here.
-    const bounds = FILTER_BOUNDS[key as Exclude<keyof FilterSettings, 'imageSmooth'>];
+    // Image-smooth (method) and grayscale (toggle-only) aren't sliders.
+    const bounds = FILTER_BOUNDS[key];
     if (bounds === undefined) return;
     const clamped = Math.min(bounds.max, Math.max(bounds.min, value));
     const next: FilterSlider = { enabled, value: clamped };
@@ -100,11 +101,19 @@ export class SettingsService {
     }));
   }
 
-  /** Image smooth takes a discrete sampling method, not a number. */
-  public setImageSmooth(enabled: boolean, method: ImageSmoothMethod): void {
+  /** Grayscale is a toggle-only filter — no value, just on/off. */
+  public setGrayscale(enabled: boolean): void {
     this._settings.update((s) => ({
       ...s,
-      filters: { ...s.filters, imageSmooth: { enabled, method } },
+      filters: { ...s.filters, grayscale: { enabled } },
+    }));
+  }
+
+  /** Image smooth takes a discrete sampling method, not a number. */
+  public setImageSmoothMethod(method: ImageSmoothMethod): void {
+    this._settings.update((s) => ({
+      ...s,
+      filters: { ...s.filters, imageSmooth: { method } },
     }));
   }
 
@@ -165,11 +174,8 @@ export class SettingsService {
       brightness: this.pickFilter(f['brightness'], fallback.filters.brightness, FILTER_BOUNDS.brightness),
       blueLight: this.pickFilter(f['blueLight'], fallback.filters.blueLight, FILTER_BOUNDS.blueLight),
       contrast: this.pickFilter(f['contrast'], fallback.filters.contrast, FILTER_BOUNDS.contrast),
-      gamma: this.pickFilter(f['gamma'], fallback.filters.gamma, FILTER_BOUNDS.gamma),
-      grayscale: this.pickFilter(f['grayscale'], fallback.filters.grayscale, FILTER_BOUNDS.grayscale),
+      grayscale: this.pickToggle(f['grayscale'], fallback.filters.grayscale),
       sepia: this.pickFilter(f['sepia'], fallback.filters.sepia, FILTER_BOUNDS.sepia),
-      sharpen: this.pickFilter(f['sharpen'], fallback.filters.sharpen, FILTER_BOUNDS.sharpen),
-      blur: this.pickFilter(f['blur'], fallback.filters.blur, FILTER_BOUNDS.blur),
       grain: this.pickFilter(f['grain'], fallback.filters.grain, FILTER_BOUNDS.grain),
       imageSmooth: this.pickFilterMethod(f['imageSmooth'], fallback.filters.imageSmooth),
     };
@@ -209,15 +215,18 @@ export class SettingsService {
 
   private pickFilterMethod(raw: unknown, fallback: FilterMethod): FilterMethod {
     if (typeof raw !== 'object' || raw === null) return fallback;
-    const r = raw as { enabled?: unknown; method?: unknown };
+    const r = raw as { method?: unknown };
     const method = this.pickEnum(
       r.method,
-      ['nearest-neighbor', 'averaging', 'bilinear', 'bicubic', 'lanczos3'],
+      ['none', 'nearest-neighbor', 'averaging', 'bilinear', 'bicubic', 'lanczos3'],
       fallback.method,
     );
-    return {
-      enabled: typeof r.enabled === 'boolean' ? r.enabled : fallback.enabled,
-      method,
-    };
+    return { method };
+  }
+
+  private pickToggle(raw: unknown, fallback: FilterToggle): FilterToggle {
+    if (typeof raw !== 'object' || raw === null) return fallback;
+    const r = raw as { enabled?: unknown };
+    return { enabled: typeof r.enabled === 'boolean' ? r.enabled : fallback.enabled };
   }
 }

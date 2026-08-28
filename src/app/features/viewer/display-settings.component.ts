@@ -7,7 +7,6 @@ import {
 import {
   IonIcon,
   IonItem,
-  IonLabel,
   IonList,
   IonSelect,
   IonSelectOption,
@@ -79,8 +78,8 @@ const ZOOM_OPTIONS: readonly Option<ZoomMode>[] = [
 ];
 
 const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
-  { value: 'ltr', label: 'Left → right' },
-  { value: 'rtl', label: 'Right → left' },
+  { value: 'ltr', label: 'Left to right' },
+  { value: 'rtl', label: 'Right to left' },
 ];
 
 /**
@@ -94,14 +93,7 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
   selector: 'ov-display-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonIcon,
-    IonItem,
-    IonLabel,
-    IonList,
-    IonSelect,
-    IonSelectOption,
-  ],
+  imports: [IonIcon, IonItem, IonList, IonSelect, IonSelectOption],
   template: `
     <ion-list lines="none" class="settings-list">
       <ion-item>
@@ -111,8 +103,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="swap-horizontal-outline"
           md="swap-horizontal-sharp"
         ></ion-icon>
-        <ion-label>Reading direction</ion-label>
         <ion-select
+          label="Reading direction"
+          class="display-select"
           [value]="readingDirection()"
           (ionChange)="onReadingDirectionChange($event)"
           interface="popover"
@@ -131,8 +124,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="phone-portrait-outline"
           md="phone-portrait-sharp"
         ></ion-icon>
-        <ion-label>Screen orientation</ion-label>
         <ion-select
+          label="Screen orientation"
+          class="display-select"
           [value]="orientation()"
           (ionChange)="onOrientationChange($event)"
           interface="popover"
@@ -151,8 +145,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="book-outline"
           md="book-sharp"
         ></ion-icon>
-        <ion-label>Page layout</ion-label>
         <ion-select
+          label="Page layout"
+          class="display-select"
           [value]="pageLayout()"
           (ionChange)="onPageLayoutChange($event)"
           interface="popover"
@@ -171,8 +166,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="scan-outline"
           md="scan-sharp"
         ></ion-icon>
-        <ion-label>Zoom</ion-label>
         <ion-select
+          label="Zoom"
+          class="display-select"
           [value]="zoom()"
           (ionChange)="onZoomChange($event)"
           interface="popover"
@@ -184,7 +180,6 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
         </ion-select>
       </ion-item>
 
-
       <ion-item>
         <ion-icon
           aria-hidden="true"
@@ -192,8 +187,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="contrast-outline"
           md="contrast-sharp"
         ></ion-icon>
-        <ion-label>Interface theme</ion-label>
         <ion-select
+          label="Interface theme"
+          class="display-select"
           [value]="theme()"
           (ionChange)="onThemeChange($event)"
           interface="popover"
@@ -212,8 +208,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="albums-outline"
           md="albums-sharp"
         ></ion-icon>
-        <ion-label>Viewer mode</ion-label>
         <ion-select
+          label="Viewer mode"
+          class="display-select"
           [value]="viewerMode()"
           (ionChange)="onViewerModeChange($event)"
           interface="popover"
@@ -232,8 +229,9 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           ios="refresh-outline"
           md="refresh-sharp"
         ></ion-icon>
-        <ion-label>Page transition effect</ion-label>
         <ion-select
+          label="Page transition effect"
+          class="display-select"
           [value]="pageTransition()"
           (ionChange)="onPageTransitionChange($event)"
           interface="popover"
@@ -254,6 +252,12 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
       ion-item ion-icon[slot='start'] {
         color: var(--ion-color-medium);
         font-size: 22px;
+      }
+      .display-select {
+        min-width: 160px;
+      }
+      ion-select::part(label) {
+        font-size: 0.875rem;
       }
     `,
   ],

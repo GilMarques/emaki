@@ -25,7 +25,7 @@ import { FILTER_BOUNDS } from '../../core/models/settings.model';
 import { SettingsService } from '../../core/services/settings.service';
 
 interface SliderRow {
-  readonly key: Exclude<keyof FilterSettings, 'imageSmooth'>;
+  readonly key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>;
   readonly label: string;
   readonly suffix: string;
   readonly icon: string;
@@ -41,15 +41,12 @@ const SLIDER_ROWS: readonly SliderRow[] = [
   { key: 'brightness', label: 'Brightness', suffix: '%', icon: 'sunny' },
   { key: 'blueLight', label: 'Blue light filter', suffix: '%', icon: 'eye' },
   { key: 'contrast', label: 'Contrast', suffix: '%', icon: 'contrast' },
-  { key: 'gamma', label: 'Gamma', suffix: '', icon: 'aperture' },
-  { key: 'grayscale', label: 'Grayscale', suffix: '%', icon: 'color-filter' },
   { key: 'sepia', label: 'Sepia', suffix: '%', icon: 'leaf' },
-  { key: 'sharpen', label: 'Sharpen', suffix: '', icon: 'diamond' },
-  { key: 'blur', label: 'Blur', suffix: 'px', icon: 'water' },
   { key: 'grain', label: 'Grain', suffix: '%', icon: 'sparkles' },
 ];
 
 const SMOOTH_OPTIONS: readonly SmoothOption[] = [
+  { value: 'none', label: 'None' },
   { value: 'nearest-neighbor', label: 'Nearest neighbor' },
   { value: 'averaging', label: 'Averaging' },
   { value: 'bilinear', label: 'Bilinear' },
@@ -91,19 +88,18 @@ const SMOOTH_OPTIONS: readonly SmoothOption[] = [
             [md]="row.icon + '-sharp'"
           ></ion-icon>
           <ion-toggle
+            slot="end"
             [checked]="getEnabled(row.key)"
             (ionChange)="onToggleChange(row.key, $event)"
             [attr.aria-label]="'Enable ' + row.label"
           ></ion-toggle>
           <ion-label>
             <h3>{{ row.label }}</h3>
-            <ion-note>
-              {{ getValue(row.key) }}{{ row.suffix }}
-            </ion-note>
           </ion-label>
         </ion-item>
         <ion-item class="slider-row" [class.is-disabled]="!getEnabled(row.key)">
           <ion-range
+            pin="true"
             [min]="bounds[row.key].min"
             [max]="bounds[row.key].max"
             [step]="bounds[row.key].step"
@@ -125,18 +121,8 @@ const SMOOTH_OPTIONS: readonly SmoothOption[] = [
           ios="resize-outline"
           md="resize-sharp"
         ></ion-icon>
-        <ion-toggle
-          [checked]="imageSmoothEnabled()"
-          (ionChange)="onImageSmoothToggle($event)"
-          aria-label="Enable image smoothing"
-        ></ion-toggle>
-        <ion-label>
-          <h3>Image smooth</h3>
-          <ion-note>
-            {{ imageSmoothLabel() }}
-          </ion-note>
-        </ion-label>
         <ion-select
+          label="Image smooth"
           [value]="imageSmoothMethod()"
           (ionChange)="onImageSmoothMethodChange($event)"
           interface="popover"
@@ -147,6 +133,24 @@ const SMOOTH_OPTIONS: readonly SmoothOption[] = [
             <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
           }
         </ion-select>
+      </ion-item>
+
+      <ion-item>
+        <ion-icon
+          aria-hidden="true"
+          slot="start"
+          ios="color-wand-outline"
+          md="color-wand-sharp"
+        ></ion-icon>
+        <ion-label>
+          <h3>Grayscale</h3>
+        </ion-label>
+        <ion-toggle
+          slot="end"
+          [checked]="grayscaleEnabled()"
+          (ionChange)="onGrayscaleToggle($event)"
+          aria-label="Enable grayscale"
+        ></ion-toggle>
       </ion-item>
     </ion-list>
   `,
@@ -169,6 +173,9 @@ const SMOOTH_OPTIONS: readonly SmoothOption[] = [
       .smooth-select {
         min-width: 140px;
       }
+      ion-select::part(label) {
+        font-size: 0.875rem;
+      }
     `,
   ],
 })
@@ -182,24 +189,25 @@ export class FiltersSettingsComponent {
   /** Live snapshot of the filters object — recomputed whenever settings change. */
   private readonly filters = computed(() => this.settings.settings().filters);
 
-  public getEnabled(key: Exclude<keyof FilterSettings, 'imageSmooth'>): boolean {
+  public getEnabled(key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>): boolean {
     return this.filters()[key].enabled;
   }
 
-  public getValue(key: Exclude<keyof FilterSettings, 'imageSmooth'>): number {
+  public getValue(key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>): number {
     return this.filters()[key].value;
   }
 
-  public readonly imageSmoothEnabled = computed(() => this.filters().imageSmooth.enabled);
   public readonly imageSmoothMethod = computed(() => this.filters().imageSmooth.method);
 
-  public imageSmoothLabel(): string {
-    const opt = SMOOTH_OPTIONS.find((o) => o.value === this.imageSmoothMethod());
-    return opt?.label ?? this.imageSmoothMethod();
+  /** Grayscale is a toggle-only filter (no value). */
+  public readonly grayscaleEnabled = computed(() => this.filters().grayscale.enabled);
+
+  public onGrayscaleToggle(event: CustomEvent<{ checked: boolean }>): void {
+    this.settings.setGrayscale(event.detail.checked);
   }
 
   public onToggleChange(
-    key: Exclude<keyof FilterSettings, 'imageSmooth'>,
+    key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>,
     event: CustomEvent<{ checked: boolean }>,
   ): void {
     const current = this.filters()[key];
@@ -207,7 +215,7 @@ export class FiltersSettingsComponent {
   }
 
   public onSliderChange(
-    key: Exclude<keyof FilterSettings, 'imageSmooth'>,
+    key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>,
     event: CustomEvent<RangeChangeEventDetail>,
   ): void {
     const raw = firstNumeric(event.detail.value);
@@ -215,21 +223,18 @@ export class FiltersSettingsComponent {
     this.settings.setFilter(key, current.enabled, raw);
   }
 
-  public onImageSmoothToggle(event: CustomEvent<{ checked: boolean }>): void {
-    this.settings.setImageSmooth(event.detail.checked, this.imageSmoothMethod());
-  }
-
   public onImageSmoothMethodChange(event: CustomEvent<{ value: ImageSmoothMethod | undefined }>): void {
     const v = event.detail.value;
     if (v === undefined) return;
     if (
+      v === 'none' ||
       v === 'nearest-neighbor' ||
       v === 'averaging' ||
       v === 'bilinear' ||
       v === 'bicubic' ||
       v === 'lanczos3'
     ) {
-      this.settings.setImageSmooth(this.imageSmoothEnabled(), v);
+      this.settings.setImageSmoothMethod(v);
     }
   }
 }
