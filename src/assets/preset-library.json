@@ -13,7 +13,18 @@
             "id": "preset:HxH/Vol.01 Ch.0001 (en) [Nexgear]",
             "name": "Vol.01 Ch.0001 (en) [Nexgear]",
             "isBook": true,
-            "children": [],
+            "children": [
+              {
+                "id": "preset:HxH/Vol.01 Ch.0001 (en) [Nexgear]/.enhanced",
+                "name": ".enhanced",
+                "isBook": true,
+                "children": [],
+                "imageUrls": [
+                  "assets/sample/HxH/Vol.01%20Ch.0001%20(en)%20%5BNexgear%5D/.enhanced/1kv1h6a.png",
+                  "assets/sample/HxH/Vol.01%20Ch.0001%20(en)%20%5BNexgear%5D/.enhanced/1plkyp3.png"
+                ]
+              }
+            ],
             "imageUrls": [
               "assets/sample/HxH/Vol.01%20Ch.0001%20(en)%20%5BNexgear%5D/01.jpg",
               "assets/sample/HxH/Vol.01%20Ch.0001%20(en)%20%5BNexgear%5D/02.jpg",
@@ -54,7 +65,17 @@
             "id": "preset:HxH/Vol.01 Ch.0002 (en) [Nexgear]",
             "name": "Vol.01 Ch.0002 (en) [Nexgear]",
             "isBook": true,
-            "children": [],
+            "children": [
+              {
+                "id": "preset:HxH/Vol.01 Ch.0002 (en) [Nexgear]/.enhanced",
+                "name": ".enhanced",
+                "isBook": true,
+                "children": [],
+                "imageUrls": [
+                  "assets/sample/HxH/Vol.01%20Ch.0002%20(en)%20%5BNexgear%5D/.enhanced/15r5dq9.png"
+                ]
+              }
+            ],
             "imageUrls": [
               "assets/sample/HxH/Vol.01%20Ch.0002%20(en)%20%5BNexgear%5D/01.png",
               "assets/sample/HxH/Vol.01%20Ch.0002%20(en)%20%5BNexgear%5D/02.png",
@@ -86,7 +107,20 @@
             "id": "preset:HxH/Vol.01 Ch.0003 (en) [Nexgear]",
             "name": "Vol.01 Ch.0003 (en) [Nexgear]",
             "isBook": true,
-            "children": [],
+            "children": [
+              {
+                "id": "preset:HxH/Vol.01 Ch.0003 (en) [Nexgear]/.enhanced",
+                "name": ".enhanced",
+                "isBook": true,
+                "children": [],
+                "imageUrls": [
+                  "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/.enhanced/1wnq07y.png",
+                  "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/.enhanced/17uip8e.png",
+                  "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/.enhanced/w9zl6.png",
+                  "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/.enhanced/wzjt81.png"
+                ]
+              }
+            ],
             "imageUrls": [
               "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/01.png",
               "assets/sample/HxH/Vol.01%20Ch.0003%20(en)%20%5BNexgear%5D/02.png",

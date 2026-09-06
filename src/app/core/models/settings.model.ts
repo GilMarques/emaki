@@ -113,7 +113,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     readingDirection: 'ltr',
     screenOrientation: 'auto',
     pageLayout: 'default',
-    interfaceTheme: 'auto',
+    interfaceTheme: 'light',
     viewerMode: 'paged',
     pageTransition: 'none',
     zoom: 'fit-screen',
