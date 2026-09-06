@@ -1,0 +1,4 @@
+# Rust build output — never commit.
+/target
+# Tauri-generated capability/permission schemas (regenerated on build).
+/gen/schemas

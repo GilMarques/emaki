@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
+  IonAlert,
   IonBreadcrumb,
   IonBreadcrumbs,
   IonButton,
@@ -25,8 +26,13 @@ import {
 import { DisplaySettingsComponent } from '../viewer/display-settings.component';
 import { FiltersSettingsComponent } from '../viewer/filters-settings.component';
 import type { FsFolder } from '../../core/native/library-scanner.port';
+import type { Book } from '../../core/models/book.model';
+import { FILE_SYSTEM_BROWSER, type FileSystemBrowser } from '../../core/native/file-system-browser.port';
 import { BookstoreService } from '../../core/services/bookstore.service';
+import { FilePageService } from '../../core/services/file-page.service';
+import { LibraryRootService } from '../../core/services/library-root.service';
 import { ScannerService } from '../../core/services/scanner.service';
+import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { ShelfService } from '../../core/services/shelf.service';
 
 @Component({
@@ -34,6 +40,7 @@ import { ShelfService } from '../../core/services/shelf.service';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    IonAlert,
     IonBreadcrumb,
     IonBreadcrumbs,
     IonButton,
@@ -62,8 +69,15 @@ import { ShelfService } from '../../core/services/shelf.service';
 })
 export class BookshelfPage {
   private readonly scanner = inject(ScannerService);
-  private readonly bookstore = inject(BookstoreService);
+  private readonly bookshelf = inject(BookstoreService);
   private readonly shelf = inject(ShelfService);
+  private readonly fs = inject<FileSystemBrowser>(FILE_SYSTEM_BROWSER);
+  private readonly root = inject(LibraryRootService);
+  private readonly filePages = inject(FilePageService);
+  private readonly enhance = inject(ScanEnhancementService);
+
+  /** The folder-pick entry point only appears when a fs backend is present. */
+  public readonly showFiles = computed(() => this.fs.isAvailable());
 
   public readonly tree = this.scanner.tree;
   public readonly scanning = this.scanner.scanning;
@@ -78,6 +92,45 @@ export class BookshelfPage {
 
   /** Ids of the folder chain from the root to the current folder. */
   public readonly currentPath = signal<readonly string[]>([]);
+
+  /** Folder whose enhance confirmation alert is open, or null. */
+  public readonly alertFor = signal<FsFolder | null>(null);
+  public readonly alertOpen = computed(() => this.alertFor() !== null);
+
+  /** Formatted storage estimate for the pending enhancement, or null while unknown. */
+  public readonly alertSize = signal<string | null>(null);
+
+  /** Alert header: distinguishes a single book from a whole series. */
+  public readonly alertHeader = computed(() => {
+    const f = this.alertFor();
+    if (f === null) return '';
+    return this.isBookFolder(f) ? 'Enhance scans?' : 'Enhance series?';
+  });
+
+  /** Alert body text, including the book count for a series and a space estimate. */
+  public readonly alertMessage = computed(() => {
+    const f = this.alertFor();
+    if (f === null) return '';
+    let base: string;
+    if (this.isBookFolder(f)) {
+      base = 'This book will be enhanced in the background.';
+    } else {
+      const n = this.collectBooks(f).length;
+      base = `${n} book${n === 1 ? '' : 's'} in this series will be enhanced in the background.`;
+    }
+    const size = this.alertSize();
+    return size === null ? base : `${base}\nEstimated space: ~${size}`;
+  });
+
+  /** Alert buttons (Cancel / Enhance). */
+  public readonly alertButtons = computed(() => [
+    { text: 'Cancel', role: 'cancel' },
+    { text: 'Enhance', role: 'enhance' },
+  ]);
+
+  private isBookFolder(f: FsFolder): boolean {
+    return f.isBook && this.scanner.isScanned(f.id);
+  }
 
   /** The folder currently being listed, or null before discovery. */
   public readonly currentFolder = computed<FsFolder | null>(() => {
@@ -124,8 +177,17 @@ export class BookshelfPage {
     return folder.isBook && this.scanner.isScanned(folder.id) && !!folder.imageUrls?.length;
   }
 
+  /** Cover URL, resolved through the fs resolver for real-disk books. */
   public coverFor(folder: FsFolder): string | undefined {
-    return this.scanner.coverFor(folder);
+    const raw = this.scanner.coverFor(folder);
+    if (!raw) return undefined;
+    if (folder.id.startsWith('fs:')) {
+      // Track the resolver revision so the cover re-renders once the blob/asset
+      // URL is ready (fast path via convertFileSrc is synchronous anyway).
+      this.filePages.revision();
+      return this.filePages.displayUrl(raw);
+    }
+    return raw;
   }
 
   /**
@@ -164,15 +226,19 @@ export class BookshelfPage {
   }
 
   /** Tap a tile: open a scanned book, otherwise descend into the folder. */
-  public onTileClick(child: FsFolder): void {
+  public async onTileClick(child: FsFolder): Promise<void> {
     if (child.isBook && this.scanner.isScanned(child.id)) {
-      this.bookstore.openById(child.id);
+      const book = this.shelf.byId(child.id);
+      if (book && book.source.type === 'folder') {
+        await this.filePages.preload(book);
+      }
+      this.bookshelf.openById(child.id);
     } else {
       this.navigate(child.id);
     }
   }
 
-  /** Descend into a subfolder. */
+  /** Descend into a subfolder (a series → its books). */
   public navigate(id: string): void {
     this.currentPath.update((p) => [...p, id]);
   }
@@ -190,7 +256,131 @@ export class BookshelfPage {
     this.currentPath.update((p) => p.slice(0, -1));
   }
 
+  /** Scan the library. With a fs backend and no root yet, pick a folder first. */
   public async scan(): Promise<void> {
+    if (this.fs.isAvailable() && this.root.root() === null) {
+      await this.openFolder();
+      return;
+    }
     await this.scanner.scan();
+    this.preloadCovers();
   }
+
+  /** Pick a folder on disk; it becomes the library root and is scanned. */
+  public async openFolder(): Promise<void> {
+    console.log('[shelf] openFolder() start');
+    const dir = await this.fs.pickDirectory();
+    console.log('[shelf] openFolder() picked:', dir);
+    if (!dir) return;
+    this.root.setRoot(dir);
+    console.log('[shelf] openFolder() root set');
+    await this.scanner.discover();
+    console.log('[shelf] openFolder() discovered, tree:', this.scanner.tree());
+    await this.scanner.scan();
+    console.log('[shelf] openFolder() scanned, books:', this.scanner.booksFound());
+    this.preloadCovers();
+  }
+
+  /** Warm the blob cache for every fs book's cover so tiles render with real
+   *  thumbnails (revision bumps re-render the shelf once each is ready). */
+  private preloadCovers(): void {
+    const root = this.tree();
+    if (!root) return;
+    const covers: string[] = [];
+    const walk = (node: FsFolder): void => {
+      if (node.id.startsWith('fs:') && node.imageUrls && node.imageUrls.length > 0) {
+        covers.push(node.imageUrls[0]);
+      }
+      node.children.forEach(walk);
+    };
+    walk(root);
+    void Promise.all(covers.map((c) => this.filePages.ensure(c).catch(() => null)));
+  }
+
+  /** True when a book has at least one enhanced derivative (badge on the tile). */
+  public isEnhanced(folder: FsFolder): boolean {
+    return this.enhance.hasEnhanced(folder.id);
+  }
+
+  /** Open the enhance confirmation alert for a tile (book or series). */
+  public openEnhanceAlert(child: FsFolder): void {
+    this.alertFor.set(child);
+    void this.predictAlertSize(child);
+  }
+
+  /**
+   * Roughly predict how much disk the enhanced derivatives will take: the sum
+   * of the source page sizes grown by the output pixel ratio (scale²). PNG
+   * output is lossless, so real sizes land in that ballpark. The estimate is
+   * omitted when page sizes can't be stat'ed (e.g. preset books).
+   */
+  private async predictAlertSize(folder: FsFolder): Promise<void> {
+    const scale = this.enhance.settings().scale;
+    const books = this.isBookFolder(folder)
+      ? (this.shelf.byId(folder.id) === undefined ? [] : [this.shelf.byId(folder.id)!])
+      : this.collectBooks(folder);
+    let bytes = 0;
+    for (const book of books) {
+      for (const page of book.pages) {
+        const size = await this.fs.stat(page.url).catch(() => null);
+        if (size !== null && size > 0) bytes += size;
+      }
+    }
+    this.alertSize.set(bytes <= 0 ? null : formatBytes(bytes * scale * scale));
+  }
+
+  /** Alert dismissed: run enhancement if the user confirmed. */
+  public onAlertDismiss(role: string | undefined): void {
+    const folder = this.alertFor();
+    this.alertFor.set(null);
+    if (folder === null || role !== 'enhance') return;
+    if (this.isBookFolder(folder)) {
+      void this.enhanceBookTile(folder);
+    } else {
+      void this.enhanceSeriesTile(folder);
+    }
+  }
+
+  /** Background-enhance a single book without opening it. */
+  public async enhanceBookTile(child: FsFolder): Promise<void> {
+    const book = this.shelf.byId(child.id);
+    if (book === undefined) return;
+    await this.enhance.enhanceBook(book);
+  }
+
+  /** Background-enhance every book inside a series folder, without opening any. */
+  public async enhanceSeriesTile(folder: FsFolder): Promise<void> {
+    const books = this.collectBooks(folder);
+    if (books.length === 0) return;
+    await this.enhance.enhanceSeries(books);
+  }
+
+  /** Recursively gather every scanned book folder under `node`. */
+  private collectBooks(node: FsFolder): Book[] {
+    const out: Book[] = [];
+    const walk = (n: FsFolder): void => {
+      if (n.isBook && this.scanner.isScanned(n.id)) {
+        const book = this.shelf.byId(n.id);
+        if (book !== undefined) out.push(book);
+      }
+      n.children.forEach(walk);
+    };
+    walk(node);
+    return out;
+  }
+}
+
+/** Human-readable byte size (e.g. "12.4 MB"). */
+export function formatBytes(bytes: number): string {
+  const units = ['KB', 'MB', 'GB', 'TB'] as const;
+  let value = bytes;
+  let unit = 'B';
+  for (const u of units) {
+    value /= 1024;
+    unit = u;
+    if (value < 1024) break;
+  }
+  if (unit === 'B') return `${Math.round(bytes)} B`;
+  const rendered = value >= 10 || Number.isInteger(value) ? Math.round(value) : value.toFixed(1);
+  return `${rendered} ${unit}`;
 }

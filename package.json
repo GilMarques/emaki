@@ -10,7 +10,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
-    "presets:gen": "node scripts/gen-preset-books.mjs"
+    "presets:gen": "node scripts/gen-preset-books.mjs",
+    "tauri": "tauri"
   },
   "private": true,
   "dependencies": {
@@ -30,6 +31,8 @@
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/status-bar": "8.0.3",
     "@ionic/angular": "^8.0.0",
+    "@openviewer/saf-browser": "file:native/saf-browser",
+    "@openviewer/real-esrgan": "file:native/real-esrgan",
     "ionicons": "^7.0.0",
     "page-flip": "^2.0.7",
     "rxjs": "~7.8.0",
@@ -49,6 +52,7 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "8.5.0",
     "@ionic/angular-toolkit": "^12.0.0",
+    "@tauri-apps/cli": "^2",
     "@types/jasmine": "~5.1.0",
     "@types/page-flip": "^2.0.4",
     "@typescript-eslint/eslint-plugin": "^8.18.0",

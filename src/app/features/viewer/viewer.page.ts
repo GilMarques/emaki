@@ -17,8 +17,11 @@ import type { Page } from '../../core/models/book.model';
 import type { FilterSettings } from '../../core/models/settings.model';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { BookstoreService } from '../../core/services/bookstore.service';
+import { FilePageService } from '../../core/services/file-page.service';
+import { KeepAwakeService } from '../../core/services/keep-awake.service';
 import { MagnifierStateService } from '../../core/services/magnifier-state.service';
 import { ShelfService } from '../../core/services/shelf.service';
+import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { SettingsService } from '../../core/services/settings.service';
 import { BookSpreadComponent } from './book-spread.component';
 import { MagnifierComponent } from './magnifier.component';
@@ -59,8 +62,11 @@ export class ViewerPage {
   private readonly bookstore = inject(BookstoreService);
   private readonly settings = inject(SettingsService);
   private readonly magnifierState = inject(MagnifierStateService);
-  private readonly flip = inject(BookFlipService);
-  private readonly shelf = inject(ShelfService);
+    private readonly flip = inject(BookFlipService);
+    private readonly shelf = inject(ShelfService);
+    private readonly scan = inject(ScanEnhancementService);
+    private readonly filePages = inject(FilePageService);
+    private readonly keepAwake = inject(KeepAwakeService);
 
   /** Open book, or null. Bound to the spread component. */
   public readonly openBook = computed(() => this.bookstore.state().book);
@@ -286,10 +292,10 @@ export class ViewerPage {
   public readonly viewportWidth = this._viewportWidth.asReadonly();
   public readonly viewportHeight = this._viewportHeight.asReadonly();
 
-  /** URL of the current page image. */
+  /** URL of the current page image (enhanced derivative when ready, else original). */
   public readonly currentPageUrl = computed<string | null>(() => {
     const page = this.bookstore.currentPage();
-    return page === null ? null : page.url;
+    return page === null ? null : this.scan.displayUrlFor(page);
   });
 
   /** Magnification factor (live from Preferences). */
@@ -332,6 +338,23 @@ export class ViewerPage {
         }
         this.stopMomentum();
       });
+    });
+
+    // When an enhanced derivative completes (or its blob URL becomes ready),
+    // refresh the mounted page-flip at a safe (idle) moment so the improved page
+    // shows without navigating. Also watch FilePageService.revision() so the
+    // late-arriving blob URL for a freshly-enhanced page is picked up.
+    effect(() => {
+      this.scan.revision();
+      this.filePages.revision();
+      untracked(() => this.flip.refreshImages());
+    });
+
+    // Keep the screen on while reading when the setting is enabled.
+    effect(() => {
+      const keep = this.settings.settings().display.keepAwake && this.openBook() !== null;
+      if (keep) this.keepAwake.enable();
+      else this.keepAwake.disable();
     });
   }
 

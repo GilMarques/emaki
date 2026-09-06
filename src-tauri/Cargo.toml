@@ -1,0 +1,32 @@
+[package]
+name = "open-viewer"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "open_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+zip = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
+anyhow = "1"
+image = "0.25"
+# ONNX Runtime (CPU-only). Only release candidates are published on crates.io, so
+# we pin explicitly. Bump to the latest rc (or 2.x stable once released) and
+# re-check the API on upgrade. `ndarray` feature enables TensorRef::from_array_view.
+ort = { version = "=2.0.0-rc.13", features = ["ndarray"] }
+ndarray = "0.17"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+lto = true

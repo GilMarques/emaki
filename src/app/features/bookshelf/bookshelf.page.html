@@ -8,6 +8,18 @@
         <ion-breadcrumb (click)="goToCrumb(i)">{{ c.name }}</ion-breadcrumb>
       }
     </ion-breadcrumbs>
+    @if (showFiles()) {
+      <ion-button
+        class="open-btn"
+        shape="round"
+        size="small"
+        (click)="openFolder()"
+        aria-label="Select a folder from disk"
+      >
+        <ion-icon slot="start" name="folder-open-outline"></ion-icon>
+        Select
+      </ion-button>
+    }
   </ion-toolbar>
 </ion-header>
 
@@ -53,7 +65,22 @@
               (keyup.enter)="onTileClick(child)"
             >
               @if (showCover(child)) {
-                <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
+                <div class="thumb">
+                  <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
+                  @if (isEnhanced(child)) {
+                    <ion-icon class="enhanced-badge" name="sparkles" aria-label="Enhanced"></ion-icon>
+                  }
+                  <ion-icon
+                    class="enhance-btn"
+                    name="sparkles"
+                    role="button"
+                    tabindex="0"
+                    aria-label="Enhance"
+                    [color]="isEnhanced(child) ? 'primary' : 'medium'"
+                    (click)="$event.stopPropagation(); openEnhanceAlert(child)"
+                    (keyup.enter)="$event.stopPropagation(); openEnhanceAlert(child)"
+                  ></ion-icon>
+                </div>
               } @else if (coversFor(child).length > 0) {
                 <div class="cover-stack">
                   @for (c of coversFor(child); track c; let i = $index) {
@@ -79,6 +106,14 @@
             </div>
           </ion-col>
         }
+
+        <ion-alert
+          [isOpen]="alertOpen()"
+          [header]="alertHeader()"
+          [message]="alertMessage()"
+          [buttons]="alertButtons()"
+          (didDismiss)="onAlertDismiss($any($event).detail.role)"
+        ></ion-alert>
       </ion-row>
     </ion-grid>
   }

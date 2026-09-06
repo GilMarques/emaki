@@ -16,17 +16,9 @@ describe('AppComponent', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('exposes the menu groups', () => {
+  it('exposes the reader-open flag', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
-    expect(app.library.map((i) => i.url)).toEqual([
-      '/viewer',
-      '/bookshelf',
-      '/file-browser',
-    ]);
-    expect(app.settings.map((i) => i.url)).toEqual([
-      '/preferences',
-      '/about',
-    ]);
+    expect(app.isReaderOpen()).toBe(false);
   });
 });

@@ -1,0 +1,34 @@
+@if (items().length > 0) {
+  <div class="tray">
+    <div class="tray-header">
+      <ion-icon class="hdr-icon" name="sparkles-outline"></ion-icon>
+      <span class="hdr-title">Enhancing scans</span>
+      @if (paused()) {
+        <ion-note class="hdr-note">Paused</ion-note>
+      }
+    </div>
+
+    @for (item of items(); track item.bookId) {
+      <div class="row">
+        <div class="row-top">
+          <span class="title">{{ item.title }}</span>
+          <button
+            type="button"
+            class="stop"
+            (click)="stop(item.bookId)"
+            aria-label="Stop enhancing"
+          >
+            <ion-icon name="close-outline"></ion-icon>
+          </button>
+        </div>
+        <ion-progress-bar [value]="item.ratio"></ion-progress-bar>
+        <div class="row-sub">
+          {{ item.done }} / {{ item.total }}
+          @if (item.processing > 0) {
+            <span class="sub-busy"> · processing…</span>
+          }
+        </div>
+      </div>
+    }
+  </div>
+}

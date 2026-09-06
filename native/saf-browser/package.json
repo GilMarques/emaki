@@ -1,0 +1,19 @@
+{
+  "name": "@openviewer/saf-browser",
+  "version": "0.1.0",
+  "description": "Android Storage Access Framework (SAF) directory browser for OpenViewer: pick a folder, enumerate its children, keep the grant.",
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native",
+    "saf",
+    "storage",
+    "directory"
+  ]
+}

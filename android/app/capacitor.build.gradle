@@ -14,6 +14,8 @@ dependencies {
     implementation project(':capacitor-haptics')
     implementation project(':capacitor-keyboard')
     implementation project(':capacitor-status-bar')
+    implementation project(':openviewer-saf-browser')
+    implementation project(':openviewer-real-esrgan')
 
 }
 

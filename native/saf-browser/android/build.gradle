@@ -1,0 +1,23 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace "com.openviewer.safbrowser"
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 36
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+dependencies {
+    implementation 'com.capacitorjs:core:8.+'
+    // capacitor core uses androidx.activity internally but does not expose it
+    // on the compile classpath; the @ActivityCallback signature needs it.
+    implementation 'androidx.activity:activity:1.11.0'
+}

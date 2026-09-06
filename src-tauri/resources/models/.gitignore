@@ -1,0 +1,3 @@
+# Real-ESRGAN ONNX weights are large binaries fetched via scripts/fetch-realesrgan-models.sh
+# and must NOT be committed to the repo.
+*.onnx

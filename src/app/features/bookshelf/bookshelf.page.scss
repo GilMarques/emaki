@@ -169,3 +169,43 @@ ion-fab-button[title]::after {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Thumbnail wrapper: holds the cover plus its overlaid badges/button. */
+.thumb {
+  position: relative;
+  width: 100%;
+}
+
+/* Small "already enhanced" indicator overlaid on the thumbnail's top-right. */
+.enhanced-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  font-size: 18px;
+  color: #fff;
+  background: var(--ion-color-primary, #3880ff);
+  border-radius: 50%;
+  padding: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.tile {
+  position: relative;
+}
+
+/* Bottom-right sparkles icon over the thumbnail. Filled by default; colored
+   (primary) when the book is already enhanced. */
+.enhance-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.ctx-item {
+  --padding-start: 12px;
+}

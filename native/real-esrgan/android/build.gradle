@@ -1,0 +1,29 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace "com.openviewer.realesrgan"
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 36
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
+            version "3.18.1+"
+        }
+    }
+    ndkVersion "29.0.14206865"
+}
+
+dependencies {
+    implementation 'com.capacitorjs:core:8.+'
+    // capacitor core uses androidx.core internally but does not expose it on
+    // the compile classpath; the foreground service needs ContextCompat.
+    implementation 'androidx.core:core:1.17.0'
+}

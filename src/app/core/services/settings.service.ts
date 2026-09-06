@@ -83,6 +83,10 @@ export class SettingsService {
     this._settings.update((s) => ({ ...s, display: { ...s.display, magnifierZoom: clamped } }));
   }
 
+  public setKeepAwake(value: boolean): void {
+    this._settings.update((s) => ({ ...s, display: { ...s.display, keepAwake: value } }));
+  }
+
   // ──────────────────────── Filter setters ────────────────────────
 
   public setFilter<K extends Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>>(
@@ -167,6 +171,7 @@ export class SettingsService {
       pageTransition: this.pickEnum(d['pageTransition'], ['none', 'slide-horizontal', 'slide-vertical', 'page-curl'], fallback.display.pageTransition),
       zoom: this.pickEnum(d['zoom'], ['actual-size', 'fit-screen', 'fit-width', 'fit-height', 'fixed-size', 'stretch-to-fill', 'cover'], fallback.display.zoom),
       magnifierZoom: this.pickNumber(d['magnifierZoom'], MAGNIFIER_BOUNDS.min, MAGNIFIER_BOUNDS.max, fallback.display.magnifierZoom),
+      keepAwake: typeof d['keepAwake'] === 'boolean' ? d['keepAwake'] : fallback.display.keepAwake,
     };
 
     const f = (i.filters ?? {}) as Record<string, unknown>;

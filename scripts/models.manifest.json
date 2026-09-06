@@ -1,0 +1,15 @@
+{
+  "note": "Real-ESRGAN is BSD-3-Clause (NOT Apache-2.0). MangaJaNai / AnimeJaNai (CC-BY-NC-SA) are EXCLUDED. Pin sha256 before relying on a release build. The fetch script inlines external weights into a single self-contained .onnx (requires python 'onnx').",
+  "models": [
+    {
+      "id": "real_esrgan_x4plus",
+      "license": "BSD-3-Clause",
+      "source": "Derived from xinntao/Real-ESRGAN (BSD-3-Clause) via qualcomm/Real-ESRGAN-x4plus ONNX export",
+      "url": "https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/real_esrgan_x4plus/releases/v0.61.0/real_esrgan_x4plus-onnx-float.zip",
+      "scale": 4,
+      "file": "real_esrgan_x4plus.onnx",
+      "sha256": "cae21d76c5a597de726fa704727ed529ee799f22b465cff67d079b2bba1b4e62",
+      "expectedInput": "NCHW float [0,1]. Verify dynamic vs fixed axes via the script's shape check; tiling needed if fixed."
+    }
+  ]
+}

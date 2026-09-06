@@ -7,9 +7,11 @@ import {
 import {
   IonIcon,
   IonItem,
+  IonLabel,
   IonList,
   IonSelect,
   IonSelectOption,
+  IonToggle,
 } from '@ionic/angular/standalone';
 
 import type {
@@ -93,7 +95,7 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
   selector: 'ov-display-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonItem, IonList, IonSelect, IonSelectOption],
+  imports: [IonIcon, IonItem, IonLabel, IonList, IonSelect, IonSelectOption, IonToggle],
   template: `
     <ion-list lines="none" class="settings-list">
       <ion-item>
@@ -242,6 +244,21 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           }
         </ion-select>
       </ion-item>
+    <ion-item>
+        <ion-icon
+          aria-hidden="true"
+          slot="start"
+          ios="sunny-outline"
+          md="sunny-sharp"
+        ></ion-icon>
+        <ion-label>Keep screen awake</ion-label>
+        <ion-toggle
+          slot="end"
+          [checked]="keepAwake()"
+          (ionChange)="onKeepAwakeChange($event)"
+          aria-label="Keep screen awake while reading"
+        ></ion-toggle>
+      </ion-item>
     </ion-list>
   `,
   styles: [
@@ -281,6 +298,11 @@ export class DisplaySettingsComponent {
   public readonly pageTransition = computed(() => this.settings.settings().display.pageTransition);
   public readonly zoom = computed(() => this.settings.settings().display.zoom);
   public readonly readingDirection = computed(() => this.settings.settings().display.readingDirection);
+  public readonly keepAwake = computed(() => this.settings.settings().display.keepAwake);
+
+  public onKeepAwakeChange(event: CustomEvent<{ checked: boolean }>): void {
+    this.settings.setKeepAwake(event.detail.checked);
+  }
 
   public onReadingDirectionChange(event: CustomEvent<{ value: ReadingDirection | undefined }>): void {
     const v = event.detail.value;

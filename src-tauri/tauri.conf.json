@@ -1,0 +1,45 @@
+{
+  "productName": "OpenViewer",
+  "version": "0.0.1",
+  "identifier": "com.openviewer.app",
+  "build": {
+    "beforeDevCommand": "npm start",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:4200",
+    "frontendDist": "../www"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "OpenViewer",
+        "width": 1024,
+        "height": 768
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "resources": ["resources/models"],
+    "linux": {
+      "rpm": {
+        "epoch": 0,
+        "release": "1"
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
+  }
+}

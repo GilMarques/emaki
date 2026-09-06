@@ -90,6 +90,8 @@ export interface DisplaySettings {
   /** Magnifier loupe zoom factor. 1 = no magnification. Default 2.5.
    *  Edited from the Preferences page; the viewer reads it live. */
   readonly magnifierZoom: number;
+  /** Keep the screen on while reading (Screen Wake Lock API). */
+  readonly keepAwake: boolean;
 }
 
 export interface FilterSettings {
@@ -118,6 +120,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pageTransition: 'none',
     zoom: 'fit-screen',
     magnifierZoom: 2.5,
+    keepAwake: false,
   },
   filters: {
     brightness: { enabled: false, value: 100 },

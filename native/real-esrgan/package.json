@@ -1,0 +1,19 @@
+{
+  "name": "@openviewer/real-esrgan",
+  "version": "0.1.0",
+  "description": "Local, on-device AI scan enhancement (ncnn) for OpenViewer.",
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native",
+    "esrgan",
+    "upscaling",
+    "ncnn"
+  ]
+}

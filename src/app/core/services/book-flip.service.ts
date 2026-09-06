@@ -5,6 +5,8 @@ import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
 import type { Book, Page } from '../models/book.model';
 import type { ZoomMode } from '../models/settings.model';
 import { BookstoreService } from './bookstore.service';
+import { FilePageService } from './file-page.service';
+import { ScanEnhancementService } from './scan-enhancement.service';
 
 type NaturalSize = { readonly width: number; readonly height: number };
 type LoadedImage = {
@@ -42,6 +44,8 @@ export type FlipGestureState = 'user_fold' | 'fold_corner' | 'flipping' | 'read'
 @Injectable({ providedIn: 'root' })
 export class BookFlipService {
   private readonly bookstore = inject(BookstoreService);
+  private readonly enhancement = inject(ScanEnhancementService);
+  private readonly filePages = inject(FilePageService);
 
   private instance: PageFlip | null = null;
   private host: HTMLElement | null = null;
@@ -51,6 +55,8 @@ export class BookFlipService {
   private mountedBookId: string | null = null;
   private renderedIndexByLogicalIndex: readonly number[] = [];
   private logicalIndexByRenderedIndex: readonly number[] = [];
+  /** URLs last handed to page-flip, so we can skip redundant reloads. */
+  private loadedUrls: string[] = [];
 
   /** Latest page-flip state from the lib's `changeState` event. */
   private readonly _flipState = signal<FlipGestureState | null>(null);
@@ -86,9 +92,33 @@ export class BookFlipService {
     const baseIndex = sameBook ? this._currentIndex() : state.book === null ? 0 : state.currentIndex;
     const pageIndex = Math.max(0, Math.min(baseIndex, book.pages.length - 1));
     this.mountedBookId = book.id;
-    const pageUrls = book.pages.map((page) => page.url);
+    // Resolve each page to a loadable URL (web URL, or blob/asset URL for a real
+    // filesystem book) — `page.url` alone is a raw fs path the canvas can't load.
+    // Warm the blobs BEFORE page-flip mounts so it never receives a raw on-disk
+    // path: an unloadable src leaves the lib stuck before the 'read' state,
+    // which also blocks refreshImages() from ever swapping in the real blob.
+    const generation = ++this.mountGeneration;
+    const pageUrls = book.pages.map((page) => this.enhancement.displayUrlFor(page));
     if (pageUrls.length === 0) return;
 
+    void Promise.all(pageUrls.map((u) => this.filePages.ensure(u).catch(() => null)))
+      .then(() => book.pages.map((page) => this.enhancement.displayUrlFor(page)))
+      .then((warmedUrls) => {
+        if (generation !== this.mountGeneration) return; // a newer mount started
+        if (warmedUrls.length === 0) return;
+        this.mountWithUrls(host, book, warmedUrls, layout, zoom, pageIndex);
+      });
+  }
+
+  /** Mount page-flip once every page resolves to a loadable (blob) URL. */
+  private mountWithUrls(
+    host: HTMLElement,
+    book: Book,
+    pageUrls: readonly string[],
+    layout: 'single' | 'double',
+    zoom: ZoomMode,
+    pageIndex: number,
+  ): void {
     this.unmount();
     this.host = host;
     this.resetHost(host);
@@ -110,7 +140,7 @@ export class BookFlipService {
 
       const natural = loadedImages[0]?.natural ?? { width: 800, height: 1200 };
       const pageSize = computePageDimensions(containerW, containerH, natural, zoom, layout);
-      const rendered = buildRenderedPages(book.pages, loadedImages, layout, pageSize);
+      const rendered = buildRenderedPages(book.pages, pageUrls, loadedImages, layout, pageSize);
       this.logicalIndexByRenderedIndex = rendered.logicalIndexByRenderedIndex;
       this.renderedIndexByLogicalIndex = rendered.renderedIndexByLogicalIndex;
       this._bookPageSize.set(pageSize);
@@ -136,7 +166,13 @@ export class BookFlipService {
       };
 
       const pf = new PageFlip(host, settings);
-      pf.loadFromImages([...rendered.urls]);
+      // `rendered.urls` already holds displayUrlFor() results (blobs for
+      // enhanced/fs pages, direct web URLs otherwise). Do NOT swap in
+      // enhancedUriFor() here — that returns the raw on-disk path the canvas
+      // can't load.
+      const urls = [...rendered.urls];
+      this.loadedUrls = urls;
+      pf.loadFromImages(urls);
 
       pf.on('flip', (e) => {
         if (typeof e.data === 'number') {
@@ -185,6 +221,34 @@ export class BookFlipService {
   /** Tell the lib its container size changed (e.g. orientation flip). */
   public update(): void {
     this.instance?.update();
+  }
+
+  /**
+   * Reload page images with the current display URLs (originals + any enhanced
+   * derivatives that have completed). Only call when the reader is idle
+   * (`flipState === 'read'`) — reloading mid-gesture would fight the user. The
+   * current page index is preserved. No-op if nothing actually changed.
+   *
+   * This is the Phase-3 progressive-replacement path; the full per-page
+   * replacement (vendored lib extension) lands later. Cost of a full reload is
+   * why the viewer coalesces completions before calling this.
+   */
+  public refreshImages(): void {
+    if (this.instance === null) return;
+    if (this._flipState() !== 'read') return;
+    const book = this.bookstore.state().book;
+    if (book === null) return;
+
+    const urls = book.pages.map((p) => this.enhancement.displayUrlFor(p));
+    const changed =
+      this.loadedUrls.length !== urls.length ||
+      urls.some((u, i) => u !== this.loadedUrls[i]);
+    if (!changed) return;
+
+    const index = this._currentIndex();
+    this.loadedUrls = urls;
+    this.instance.loadFromImages(urls);
+    this.instance.turnToPage(index);
   }
 
 
@@ -292,6 +356,7 @@ export class BookFlipService {
 
 function buildRenderedPages(
   pages: readonly Page[],
+  pageUrls: readonly string[],
   loadedImages: readonly LoadedImage[],
   layout: 'single' | 'double',
   pageSize: { readonly width: number; readonly height: number },
@@ -309,7 +374,7 @@ function buildRenderedPages(
 
     if (logicalIndex === 0) {
       renderedIndexByLogicalIndex.push(urls.length);
-      urls.push(page.url);
+      urls.push(pageUrls[logicalIndex]);
       logicalIndexByRenderedIndex.push(logicalIndex);
       continue;
     }
@@ -330,7 +395,7 @@ function buildRenderedPages(
       logicalIndexByRenderedIndex.push(logicalIndex);
       pagesSinceCover += 2;
     } else {
-      urls.push(page.url);
+      urls.push(pageUrls[logicalIndex]);
       logicalIndexByRenderedIndex.push(logicalIndex);
       pagesSinceCover++;
     }

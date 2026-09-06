@@ -94,11 +94,15 @@ export class ScannerService {
         if (folder.isBook && folder.imageUrls && folder.imageUrls.length > 0) {
           const urls = folder.imageUrls;
           scanned.add(folder.id);
+          const isFs = folder.id.startsWith('fs:');
           books.push({
             id: folder.id,
             title: folder.name,
             coverUrl: urls[0],
-            source: { type: 'preset', basePath: '' },
+            // fs books carry real filesystem paths → resolved by displayUrlFor.
+            source: isFs
+              ? { type: 'folder', uri: folder.id.slice('fs:'.length) }
+              : { type: 'preset', basePath: '' },
             pages: urls.map((url: string, index: number) => ({ index, url, label: url })),
           });
         }
