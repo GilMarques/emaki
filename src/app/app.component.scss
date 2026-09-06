@@ -14,3 +14,10 @@ ion-menu ion-item.selected {
   --color: var(--ion-color-primary, #3880ff);
   font-weight: 600;
 }
+
+.menu-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 0;
+  margin-left: 12px;
+}

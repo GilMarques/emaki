@@ -2,11 +2,17 @@
   <ion-menu content-id="main-content" type="overlay">
     <ion-header>
       <ion-toolbar color="primary">
+        <img
+          class="menu-logo"
+          slot="start"
+          src="assets/icon/favicon.png"
+          alt="Emaki logo"
+        />
         <ion-title>Emaki</ion-title>
       </ion-toolbar>
     </ion-header>
     <ion-content>
-      <ion-list>
+      <ion-list lines="none">
         <ion-menu-toggle>
           <ion-item button routerLink="/library" routerLinkActive="selected">
             <ion-icon aria-hidden="true" slot="start" name="library-outline"></ion-icon>

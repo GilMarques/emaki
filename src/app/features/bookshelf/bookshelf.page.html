@@ -8,18 +8,6 @@
         <ion-breadcrumb (click)="goToCrumb(i)">{{ c.name }}</ion-breadcrumb>
       }
     </ion-breadcrumbs>
-    <ion-button
-      class="scan-btn"
-      slot="end"
-      shape="round"
-      size="small"
-      (click)="scan()"
-      [disabled]="scanning()"
-      aria-label="Scan library"
-    >
-      <ion-icon slot="start" name="scan-outline"></ion-icon>
-      Scan
-    </ion-button>
   </ion-toolbar>
 </ion-header>
 
@@ -107,6 +95,10 @@
     <ion-button shape="round" (click)="filtersOpen.set(true)">
       <ion-icon slot="start" name="color-filter-outline"></ion-icon>
       Filters
+    </ion-button>
+    <ion-button shape="round" (click)="scan()" [disabled]="scanning()">
+      <ion-icon slot="start" name="scan-outline"></ion-icon>
+      Scan
     </ion-button>
   </div>
 

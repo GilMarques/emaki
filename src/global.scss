@@ -51,3 +51,11 @@
 .modal-handle {
   width: 25% !important;
 }
+
+ion-item {
+  --ion-item-background: var(--ion-background-color);
+}
+
+ion-list {
+  background: var(--ion-background-color) !important;
+}
