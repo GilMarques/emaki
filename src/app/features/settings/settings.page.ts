@@ -1,12 +1,14 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
   IonButton,
+  IonButtons,
   IonContent,
   IonHeader,
   IonItem,
   IonLabel,
   IonList,
   IonListHeader,
+  IonMenuButton,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
@@ -25,12 +27,14 @@ import { SettingsService } from '../../core/services/settings.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IonButton,
+    IonButtons,
     IonContent,
     IonHeader,
     IonItem,
     IonLabel,
     IonList,
     IonListHeader,
+    IonMenuButton,
     IonTitle,
     IonToolbar,
     DisplaySettingsComponent,

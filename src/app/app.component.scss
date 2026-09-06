@@ -8,3 +8,9 @@ ion-modal.reader-sheet {
 ion-modal.reader-sheet::part(handle) {
   width: 25%;
 }
+
+ion-menu ion-item.selected {
+  --background: var(--ion-color-step-100, #e0e0e0);
+  --color: var(--ion-color-primary, #3880ff);
+  font-weight: 600;
+}

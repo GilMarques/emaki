@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
+  IonButtons,
   IonContent,
   IonHeader,
   IonIcon,
   IonItem,
   IonLabel,
   IonList,
+  IonMenuButton,
   IonText,
   IonTitle,
   IonToolbar,
@@ -22,12 +24,14 @@ import { ConnectorRegistryService } from '../../core/connectors/connector-regist
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    IonButtons,
     IonContent,
     IonHeader,
     IonIcon,
     IonItem,
     IonLabel,
     IonList,
+    IonMenuButton,
     IonText,
     IonTitle,
     IonToolbar,

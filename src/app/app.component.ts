@@ -1,5 +1,20 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
-import { IonApp, IonRouterOutlet, IonModal } from '@ionic/angular/standalone';
+import { RouterLink, RouterLinkActive } from '@angular/router';
+import {
+  IonApp,
+  IonContent,
+  IonHeader,
+  IonIcon,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonMenu,
+  IonMenuToggle,
+  IonModal,
+  IonRouterOutlet,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/angular/standalone';
 
 import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
@@ -9,7 +24,24 @@ import { ViewerPage } from './features/viewer/viewer.page';
   selector: 'app-root',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonApp, IonRouterOutlet, IonModal, ViewerPage],
+  imports: [
+    RouterLink,
+    RouterLinkActive,
+    IonApp,
+    IonContent,
+    IonHeader,
+    IonIcon,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonMenu,
+    IonMenuToggle,
+    IonModal,
+    IonRouterOutlet,
+    IonTitle,
+    IonToolbar,
+    ViewerPage,
+  ],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
 })

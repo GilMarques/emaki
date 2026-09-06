@@ -1,16 +1,26 @@
 import { Routes } from '@angular/router';
 
-/** App routes. Only the Tabs shell is a real route now; the Viewer is an
- *  overlay on top (see app.component.html). */
+/** App routes. Pages are top-level; navigation is driven by the side menu
+ *  (see app.component.html). The Viewer is an overlay on top. */
 export const APP_ROUTES: Routes = [
   {
     path: '',
-    redirectTo: 'tabs',
+    redirectTo: 'library',
     pathMatch: 'full',
   },
   {
-    path: 'tabs',
-    loadChildren: () =>
-      import('./features/tabs/tabs.routes').then((m) => m.TABS_ROUTES),
+    path: 'library',
+    loadComponent: () =>
+      import('./features/bookshelf/bookshelf.page').then((m) => m.BookshelfPage),
+  },
+  {
+    path: 'provider',
+    loadComponent: () =>
+      import('./features/provider/provider.page').then((m) => m.ProviderPage),
+  },
+  {
+    path: 'settings',
+    loadComponent: () =>
+      import('./features/settings/settings.page').then((m) => m.SettingsPage),
   },
 ];
