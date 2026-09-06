@@ -4,6 +4,12 @@
       <ion-back-button [defaultHref]="'/provider/' + (provider()?.id ?? '')"></ion-back-button>
     </ion-buttons>
     <ion-title>{{ manga()?.title ?? 'Chapters' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="downloadAll()" [disabled]="loading() || downloadingAll() || allDownloaded()">
+        <ion-icon slot="start" name="download"></ion-icon>
+        Download all
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
@@ -23,19 +29,18 @@
   } @else {
     <ion-list lines="inset">
       @for (chapter of sortedChapters(); track chapter.id) {
-        <ion-item button (click)="openChapter(chapter)" [disabled]="opening() !== null">
-          @if (opening() === chapter.id) {
-            <ion-spinner slot="start" name="crescent"></ion-spinner>
+        <ion-item button (click)="enqueueChapter(chapter)" [disabled]="downloadingAll()">
+          @if (isDownloaded(chapter)) {
+            <ion-icon slot="start" name="checkmark-circle" color="success"></ion-icon>
           } @else {
             <ion-icon slot="start" name="document-text-outline"></ion-icon>
           }
           <ion-label>
             <h2>{{ chapter.title }}</h2>
           </ion-label>
-          @if (chapter.language) {
-            <ion-note slot="end">{{ chapter.language }}</ion-note>
+          @if (isDownloaded(chapter)) {
+            <ion-icon slot="end" name="checkmark-done" color="success"></ion-icon>
           }
-          <ion-icon slot="end" name="chevron-forward"></ion-icon>
         </ion-item>
       }
     </ion-list>

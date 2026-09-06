@@ -29,6 +29,11 @@ export const APP_ROUTES: Routes = [
       import('./features/provider/chapters/chapters.page').then((m) => m.ProviderChaptersPage),
   },
   {
+    path: 'manager',
+    loadComponent: () =>
+      import('./features/manager/manager.page').then((m) => m.ManagerPage),
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.page').then((m) => m.SettingsPage),

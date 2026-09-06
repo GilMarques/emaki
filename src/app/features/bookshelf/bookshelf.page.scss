@@ -104,13 +104,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 2 / 3;
-}
-
-/* Stack of book covers shown for a container folder (first cover on top). */
-.cover-stack {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2 / 3;
+  overflow: hidden;
 }
 
 .stack-img {

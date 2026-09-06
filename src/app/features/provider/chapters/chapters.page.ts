@@ -8,6 +8,7 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
@@ -15,7 +16,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonSpinner,
   IonText,
   IonTitle,
@@ -24,14 +24,12 @@ import {
 
 import type { Chapter } from '../../../core/connectors/connector.model';
 import { ProviderBrowseService } from '../../../core/connectors/provider-browse.service';
-import type { Book, Page } from '../../../core/models/book.model';
-import { BookstoreService } from '../../../core/services/bookstore.service';
+import { DownloadService } from '../../../core/services/download.service';
 
 /**
- * Chapter list for a selected manga. Fetches chapters from the provider and
- * renders them newest-first (providers usually return oldest-first, so we
- * reverse for a reading-friendly order). Tapping a chapter builds a Book
- * from its pages and hands it to the viewer.
+ * Chapter list for a selected manga. Tapping a chapter adds it to the
+ * download queue; a header button queues every chapter at once. Rendered
+ * newest-first (providers usually return oldest-first, so we reverse).
  */
 @Component({
   selector: 'ov-provider-chapters',
@@ -39,6 +37,7 @@ import { BookstoreService } from '../../../core/services/bookstore.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IonBackButton,
+    IonButton,
     IonButtons,
     IonContent,
     IonHeader,
@@ -46,7 +45,6 @@ import { BookstoreService } from '../../../core/services/bookstore.service';
     IonItem,
     IonLabel,
     IonList,
-    IonNote,
     IonSpinner,
     IonText,
     IonTitle,
@@ -58,9 +56,10 @@ import { BookstoreService } from '../../../core/services/bookstore.service';
 export class ProviderChaptersPage {
   private readonly route = inject(ActivatedRoute);
   private readonly browse = inject(ProviderBrowseService);
-  private readonly bookstore = inject(BookstoreService);
+  private readonly downloads = inject(DownloadService);
 
-  public readonly opening = signal<string | null>(null);
+  /** True while the "download all" header action is running. */
+  public readonly downloadingAll = signal(false);
 
   public readonly provider = computed(() => this.browse.provider());
   public readonly manga = computed(() => {
@@ -74,40 +73,46 @@ export class ProviderChaptersPage {
   public readonly chapters = signal<readonly Chapter[]>([]);
 
   /** Chapters ordered newest-first for easy access to the latest release. */
-  public readonly sortedChapters = computed(() =>
-    [...this.chapters()].reverse(),
-  );
+  public readonly sortedChapters = computed(() => [...this.chapters()].reverse());
+
+  /** True when every listed chapter is already downloaded (or queued). */
+  public readonly allDownloaded = computed(() => {
+    const providerId = this.provider()?.id;
+    if (!providerId || this.chapters().length === 0) return false;
+    return this.chapters().every((c) => this.downloads.isDownloaded(providerId, c.id));
+  });
 
   constructor() {
     void this.load();
   }
 
-  /** Build a Book from the chapter's page refs and open it in the viewer. */
-  public async openChapter(chapter: Chapter): Promise<void> {
+  public isDownloaded(chapter: Chapter): boolean {
+    const providerId = this.provider()?.id;
+    return providerId !== undefined && this.downloads.isDownloaded(providerId, chapter.id);
+  }
+
+  /** Queue a single chapter for download. */
+  public enqueueChapter(chapter: Chapter): void {
     const provider = this.provider();
     const manga = this.manga();
     if (!provider || !manga) return;
+    this.downloads.enqueue(provider, chapter, `${manga.title} — ${chapter.title}`);
+  }
 
-    this.opening.set(chapter.id);
+  /** Queue every chapter for download. */
+  public async downloadAll(): Promise<void> {
+    const provider = this.provider();
+    const manga = this.manga();
+    if (!provider || !manga) return;
+    this.downloadingAll.set(true);
     try {
-      const pageRefs = await provider.getPages(chapter);
-      const pages: Page[] = pageRefs.map((ref, index) => ({
-        index,
-        url: ref.url,
-        label: `${manga.title} — ${chapter.title} (p.${index + 1})`,
-      }));
-      const book: Book = {
-        id: `${provider.id}:${chapter.id}`,
-        title: chapter.title || manga.title,
-        pages,
-        coverUrl: pageRefs[0]?.url,
-        source: { type: 'online', providerId: provider.id, chapterId: chapter.id },
-      };
-      this.bookstore.openBook(book);
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to open chapter');
+      this.downloads.enqueueMany(
+        provider,
+        this.chapters(),
+        (c) => `${manga.title} — ${c.title}`,
+      );
     } finally {
-      this.opening.set(null);
+      this.downloadingAll.set(false);
     }
   }
 

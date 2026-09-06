@@ -1,0 +1,60 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button></ion-menu-button>
+    </ion-buttons>
+    <ion-title>Manager</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (!hasTasks()) {
+    <div class="placeholder">
+      <ion-icon name="checkmark-circle"></ion-icon>
+      <h2>No tasks</h2>
+      <p>Upscaling and download jobs will appear here.</p>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      @for (task of tasksWithRatio(); track task.id + task.kind) {
+        <ion-item>
+          <ion-icon
+            slot="start"
+            [name]="task.kind === 'download' ? 'download' : 'sparkles'"
+          ></ion-icon>
+          <ion-label>
+            <h2>{{ task.title }}</h2>
+            <p>{{ kindLabel(task.kind) }} · {{ task.done }}/{{ task.total }}</p>
+          </ion-label>
+          <ion-note slot="end">
+            @switch (task.status) {
+              @case ('queued') {
+                <ion-spinner name="dots"></ion-spinner>
+              }
+              @case ('processing') {
+                <ion-spinner name="crescent"></ion-spinner>
+              }
+              @case ('done') {
+                <ion-text color="success">Done</ion-text>
+              }
+              @case ('error') {
+                <ion-text color="danger">Error</ion-text>
+              }
+              @case ('cancelled') {
+                <ion-text color="medium">Cancelled</ion-text>
+              }
+            }
+          </ion-note>
+        </ion-item>
+        @if (task.status === 'processing' || task.status === 'queued') {
+          <ion-item class="progress-row">
+            <ion-progress-bar
+              [value]="task.ratio"
+              [buffer]="task.status === 'processing' ? 0.1 : undefined"
+            ></ion-progress-bar>
+          </ion-item>
+        }
+      }
+    </ion-list>
+  }
+</ion-content>
