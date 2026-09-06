@@ -42,3 +42,36 @@
 
 </ion-content>
 
+@if (pagesOpen()) {
+  <div class="pages-backdrop" (click)="closePagesMenu()">
+    <div class="pages-menu" (click)="$event.stopPropagation()">
+      <div class="pages-header">
+        <div class="pages-title">{{ openBook()?.title }}</div>
+        <div class="pages-progress-label">{{ progress() }}</div>
+      </div>
+      <div class="pages-progress">
+        <div class="progress-track">
+          <div
+            class="progress-fill"
+            [style.width.%]="progressPercent()"
+          ></div>
+        </div>
+      </div>
+      <div class="pages-scroll">
+        @for (page of pages(); track page.index; let i = $index) {
+          <button
+            type="button"
+            class="page-thumb"
+            [class.current]="i === currentIndex()"
+            (click)="goToPage(i)"
+            [attr.aria-label]="'Page ' + (i + 1)"
+          >
+            <ion-img class="thumb-img" [src]="page.url" [alt]="'Page ' + (i + 1)"></ion-img>
+            <span class="thumb-num">{{ i + 1 }}</span>
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+

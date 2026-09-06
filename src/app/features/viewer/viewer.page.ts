@@ -10,9 +10,10 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { IonContent } from '@ionic/angular/standalone';
+import { IonContent, IonImg } from '@ionic/angular/standalone';
 
 import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
+import type { Page } from '../../core/models/book.model';
 import type { FilterSettings } from '../../core/models/settings.model';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { BookstoreService } from '../../core/services/bookstore.service';
@@ -47,7 +48,7 @@ interface PanExtents {
   selector: 'ov-viewer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonContent, BookSpreadComponent, MagnifierComponent],
+  imports: [IonContent, IonImg, BookSpreadComponent, MagnifierComponent],
   templateUrl: './viewer.page.html',
   styleUrls: ['./viewer.page.scss'],
   host: {
@@ -81,6 +82,27 @@ export class ViewerPage {
     const s = this.bookstore.state();
     if (s.book === null) return '';
     return `${s.currentIndex + 1} / ${s.book.pages.length}`;
+  });
+
+  // ──────────── Pages menu (bottom tap → page grid) ────────────
+
+  /** Whether the pages menu (title + page thumbnails) is open. */
+  public readonly pagesOpen = signal(false);
+
+  /** All pages of the open book, in order. */
+  public readonly pages = computed<readonly Page[]>(() => this.openBook()?.pages ?? []);
+
+  /** Index of the page currently on screen. */
+  public readonly currentIndex = computed(() => {
+    const s = this.bookstore.state();
+    return s.book === null ? 0 : s.currentIndex;
+  });
+
+  /** Read progress as a 0–100 percentage for the menu's progress bar. */
+  public readonly progressPercent = computed(() => {
+    const total = this.pages().length;
+    if (total === 0) return 0;
+    return ((this.currentIndex() + 1) / total) * 100;
   });
 
   // ──────────── Magnifier state ────────────
@@ -255,6 +277,23 @@ export class ViewerPage {
     this.bookstore.closeBook();
   }
 
+  /** Open the pages menu (title + thumbnails). */
+  public openPagesMenu(): void {
+    this.pagesOpen.set(true);
+  }
+
+  /** Close the pages menu. */
+  public closePagesMenu(): void {
+    this.pagesOpen.set(false);
+  }
+
+  /** Jump to a page from the pages menu. */
+  public goToPage(index: number): void {
+    this.pagesOpen.set(false);
+    this.bookstore.goTo(index);
+    this.flip.turnToPage(index);
+  }
+
   @HostListener('wheel', ['$event'])
   public onWheel(event: WheelEvent): void {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -286,6 +325,8 @@ export class ViewerPage {
   private static readonly HOLD_MS = 300;
   /** Downward drag (px) that dismisses the reader when the page fits the height. */
   private static readonly CLOSE_THRESHOLD = 100;
+  /** Height of the tap zone at the bottom of the screen that opens the pages menu. */
+  private static readonly PAGES_MENU_ZONE = 72;
   /** Horizontal slop before a drag leaves the hold window (vertical uses axis lock only). */
   private static readonly HORIZONTAL_SLOP_PX = 8;
   /** Per-frame velocity decay while coasting after a pan release (~60fps frame). */
@@ -384,7 +425,9 @@ export class ViewerPage {
       // coordinates are unscaled by toBookPoint.
       this.flip.relayPointerUp(this.clampToPageX(event.clientX), event.clientY);
     } else if (!this.magnifierState.active() && !wasPan && this.isQuickTap(event)) {
-      if (this.bookstore.cornersVisible()) {
+      if (this.isBottomZoneTap(event.clientY)) {
+        this.openPagesMenu();
+      } else if (this.bookstore.cornersVisible()) {
         this.flip.relayTap(event.clientX, event.clientY);
       } else {
         this.zoomTapFlip(event.clientX);
@@ -418,6 +461,11 @@ export class ViewerPage {
       dx * dx + dy * dy <=
       ViewerPage.HORIZONTAL_SLOP_PX * ViewerPage.HORIZONTAL_SLOP_PX
     );
+  }
+
+  /** True when a tap lands in the bottom strip that opens the pages menu. */
+  private isBottomZoneTap(clientY: number): boolean {
+    return clientY >= window.innerHeight - ViewerPage.PAGES_MENU_ZONE;
   }
 
   /**
