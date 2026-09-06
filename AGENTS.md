@@ -6,6 +6,20 @@ Guidance for AI coding agents and contributors working on this repo.
 
 **Emaki** — cross-platform book/comic reader. Initially mobile (Android first), eventually desktop. Inspired by Perfect Viewer; ships EPUB, images, archives (CBZ/CBR/7Z), with PDF/DJVU later via plugins.
 
+## Features (planned)
+
+- Local file browsing with Android 11+ scoped storage (SAF)
+- Image viewer: paginated, vertical scroll (webtoon), horizontal scroll
+- Smooth pinch / pan / fling with 60fps target
+- LTR / RTL reading, brightness / contrast / gamma, white-border crop
+- EPUB rendering
+- Archive support: CBZ / ZIP, CBR, 7Z, CBT / TAR
+- PDF / XPS / DJVU via plugin (later)
+- Bookshelf, favorites, bookmarks, recent files
+- Network sources (later): SMB / CIFS, FTP, SFTP, FTPS, OPDS
+- Cloud sources (later): Google Drive, Dropbox, OneDrive
+- Page cache, slideshow, Chromecast (later)
+
 ## Stack
 
 | Layer            | Choice                                                              |
@@ -40,6 +54,13 @@ emaki/
 ```
 
 New pages go in `src/app/features/<name>/` with sub-`.routes.ts`. Feature-local components stay co-located; cross-feature shared bits move to `shared/`.
+
+## Prerequisites
+
+- Node.js 20+
+- npm 10+
+- Android Studio (for Android builds)
+- Xcode (for iOS builds, macOS only)
 
 ## Commands
 
