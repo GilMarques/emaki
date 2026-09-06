@@ -1,6 +1,6 @@
 # Provider Icons Warnings
 
-> Favicon could not be downloaded or was invalid (HTML error page) for these providers. You'll need to find and add them manually.
+> Providers that could not be fetched a favicon for. These were dropped from the available list to keep scope tight; revisit only if a specific one is wanted later.
 
 | Provider | URL |
 |----------|-----|

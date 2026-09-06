@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  IonAvatar,
   IonButtons,
   IonContent,
   IonHeader,
   IonIcon,
+  IonImg,
   IonItem,
   IonLabel,
   IonList,
@@ -27,10 +29,12 @@ import { ProviderBrowseService } from '../../core/connectors/provider-browse.ser
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    IonAvatar,
     IonButtons,
     IonContent,
     IonHeader,
     IonIcon,
+    IonImg,
     IonItem,
     IonLabel,
     IonList,
@@ -51,5 +55,10 @@ export class ProviderPage {
   /** Remember the selected provider so browse/chapter pages can resolve it. */
   public openProvider(id: string): void {
     this.browse.selectProvider(id);
+  }
+
+  /** Favicon asset for a provider, when one was downloaded. */
+  public iconFor(id: string): string {
+    return `assets/provider-icons/${id}.ico`;
   }
 }

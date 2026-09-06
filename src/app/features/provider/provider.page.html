@@ -17,7 +17,9 @@
     <ion-list lines="inset">
       @for (provider of providers(); track provider.id) {
         <ion-item button [routerLink]="['/provider', provider.id]" (click)="openProvider(provider.id)">
-          <ion-icon slot="start" name="globe-outline"></ion-icon>
+          <ion-avatar slot="start">
+            <ion-img [src]="iconFor(provider.id)" [alt]="provider.label + ' icon'"></ion-img>
+          </ion-avatar>
           <ion-label>
             <h2>{{ provider.label }}</h2>
             <p>{{ provider.url }}</p>
