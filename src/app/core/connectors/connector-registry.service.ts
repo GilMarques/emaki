@@ -7,8 +7,6 @@ import { MangaKatanaConnector } from './mangakatana.connector';
 import { MangaTownConnector } from './mangatown.connector';
 import { NaverConnector } from './naver.connector';
 import { ShonenJumpPlusConnector } from './shonenjumpplus.connector';
-import { TapasConnector } from './tapas.connector';
-import { TonariNoYoungJumpConnector } from './tonarinoyoungjump.connector';
 
 /**
  * Registry of all registered manga providers.
@@ -26,8 +24,6 @@ export class ConnectorRegistryService {
   private readonly mangatown = inject(MangaTownConnector);
   private readonly naver = inject(NaverConnector);
   private readonly shonenjumpplus = inject(ShonenJumpPlusConnector);
-  private readonly tapas = inject(TapasConnector);
-  private readonly tonarinoyoungjump = inject(TonariNoYoungJumpConnector);
 
   private readonly _list = signal<readonly Connector[]>([
     this.mangadex,
@@ -36,8 +32,6 @@ export class ConnectorRegistryService {
     this.mangatown,
     this.naver,
     this.shonenjumpplus,
-    this.tapas,
-    this.tonarinoyoungjump,
   ]);
 
   /** All registered providers, sorted by label. */

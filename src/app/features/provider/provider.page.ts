@@ -59,6 +59,6 @@ export class ProviderPage {
 
   /** Favicon asset for a provider, when one was downloaded. */
   public iconFor(id: string): string {
-    return `assets/provider-icons/${id}.ico`;
+    return `assets/provider-icons/${id}.png`;
   }
 }
