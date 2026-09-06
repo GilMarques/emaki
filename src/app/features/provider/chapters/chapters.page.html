@@ -1,0 +1,46 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="'/provider/' + (provider()?.id ?? '')"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ manga()?.title ?? 'Chapters' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (loading()) {
+    <div class="center-status">
+      <ion-spinner name="crescent"></ion-spinner>
+    </div>
+  } @else if (error() !== null) {
+    <div class="center-status">
+      <ion-text color="danger">{{ error() }}</ion-text>
+    </div>
+  } @else if (chapters().length === 0) {
+    <div class="center-status">
+      <ion-text color="medium">No chapters found</ion-text>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      @for (chapter of sortedChapters(); track chapter.id) {
+        <ion-item button (click)="openChapter(chapter)" [disabled]="opening() !== null">
+          @if (opening() === chapter.id) {
+            <ion-spinner slot="start" name="crescent"></ion-spinner>
+          } @else {
+            <ion-icon slot="start" name="document-text-outline"></ion-icon>
+          }
+          <ion-label>
+            <h2>{{ chapter.title }}</h2>
+            @if (chapter.language) {
+              <p>Language: {{ chapter.language }}</p>
+            }
+          </ion-label>
+          @if (chapter.language) {
+            <ion-note slot="end">{{ chapter.language }}</ion-note>
+          }
+          <ion-icon slot="end" name="chevron-forward"></ion-icon>
+        </ion-item>
+      }
+    </ion-list>
+  }
+</ion-content>

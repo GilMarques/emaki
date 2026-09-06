@@ -22,7 +22,8 @@ export interface Page {
  */
 export type BookSource =
   | { readonly type: 'preset'; basePath: string }
-  | { readonly type: 'folder'; uri: string };
+  | { readonly type: 'folder'; uri: string }
+  | { readonly type: 'online'; providerId: string; chapterId: string };
 
 /**
  * A book = a folder (or archive root) containing ordered pages.

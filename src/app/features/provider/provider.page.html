@@ -16,7 +16,7 @@
   } @else {
     <ion-list lines="inset">
       @for (provider of providers(); track provider.id) {
-        <ion-item>
+        <ion-item button [routerLink]="['/provider', provider.id]" (click)="openProvider(provider.id)">
           <ion-icon slot="start" name="globe-outline"></ion-icon>
           <ion-label>
             <h2>{{ provider.label }}</h2>
@@ -27,6 +27,7 @@
               {{ provider.tags.join(' · ') }}
             </ion-text>
           }
+          <ion-icon slot="end" name="chevron-forward"></ion-icon>
         </ion-item>
       }
     </ion-list>
