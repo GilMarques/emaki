@@ -10,7 +10,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { IonContent, IonIcon } from '@ionic/angular/standalone';
+import { IonContent } from '@ionic/angular/standalone';
 
 import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
 import type { FilterSettings } from '../../core/models/settings.model';
@@ -47,7 +47,7 @@ interface PanExtents {
   selector: 'ov-viewer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonContent, IonIcon, BookSpreadComponent, MagnifierComponent],
+  imports: [IonContent, BookSpreadComponent, MagnifierComponent],
   templateUrl: './viewer.page.html',
   styleUrls: ['./viewer.page.scss'],
   host: {
@@ -248,22 +248,6 @@ export class ViewerPage {
         this.stopMomentum();
       });
     });
-  }
-
-  /** True when the current book has no further pages — the end-of-book bar shows. */
-  public readonly isLastPage = computed(() => !this.bookstore.hasNext());
-
-  /** Title of the next shelf book, or null if this is the last one. */
-  public readonly nextBookTitle = computed(() => {
-    const s = this.bookstore.state();
-    if (s.book === null) return null;
-    const id = this.shelf.nextBookId(s.book.id);
-    return id === null ? null : (this.shelf.byId(id)?.title ?? null);
-  });
-
-  /** Advance to the next registered book (end-of-book affordance). */
-  public nextBook(): void {
-    this.bookstore.openNext();
   }
 
   /** Dismiss the reader overlay, returning to the bookshelf underneath. */
