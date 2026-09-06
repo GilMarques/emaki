@@ -57,8 +57,26 @@
             >
               @if (showCover(child)) {
                 <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
+              } @else if (coversFor(child).length > 0) {
+                <div class="cover-stack">
+                  @for (c of coversFor(child); track c; let i = $index) {
+                    <ion-img class="stack-img" [src]="c" [alt]="child.name"></ion-img>
+                  }
+                </div>
               } @else {
                 <ion-icon class="folder" name="folder-outline"></ion-icon>
+              }
+              @if (progressFor(child) !== null) {
+                <div
+                  class="progress"
+                  role="progressbar"
+                  [attr.aria-valuenow]="progressFor(child)!"
+                  aria-valuemin="0"
+                  aria-valuemax="1"
+                  aria-label="Read progress"
+                >
+                  <div class="progress-fill" [style.width.%]="progressFor(child)! * 100"></div>
+                </div>
               }
               <div class="tile-name">{{ child.name }}</div>
             </div>

@@ -23,6 +23,7 @@ import { FiltersSettingsComponent } from '../viewer/filters-settings.component';
 import type { FsFolder } from '../../core/native/library-scanner.port';
 import { BookstoreService } from '../../core/services/bookstore.service';
 import { ScannerService } from '../../core/services/scanner.service';
+import { ShelfService } from '../../core/services/shelf.service';
 
 @Component({
   selector: 'ov-bookshelf',
@@ -54,6 +55,7 @@ import { ScannerService } from '../../core/services/scanner.service';
 export class BookshelfPage {
   private readonly scanner = inject(ScannerService);
   private readonly bookstore = inject(BookstoreService);
+  private readonly shelf = inject(ShelfService);
 
   public readonly tree = this.scanner.tree;
   public readonly scanning = this.scanner.scanning;
@@ -114,6 +116,41 @@ export class BookshelfPage {
 
   public coverFor(folder: FsFolder): string | undefined {
     return this.scanner.coverFor(folder);
+  }
+
+  /**
+   * Cover thumbnails to render for a tile:
+   * - a scanned book → its single cover;
+   * - a container folder → a stack of up to 4 covers of the books inside it.
+   * Empty for unscanned books / empty folders (renders a folder icon instead).
+   */
+  public coversFor(folder: FsFolder): readonly string[] {
+    if (folder.isBook) {
+      const c = this.scanner.coverFor(folder);
+      return c ? [c] : [];
+    }
+    const out: string[] = [];
+    const walk = (f: FsFolder): void => {
+      if (out.length >= 4) return;
+      if (f.isBook) {
+        const c = this.scanner.coverFor(f);
+        if (c && !out.includes(c)) out.push(c);
+        return;
+      }
+      f.children.forEach(walk);
+    };
+    folder.children.forEach(walk);
+    return out;
+  }
+
+  /** Read progress as a 0..1 fraction for a book tile, or null when not started. */
+  public progressFor(folder: FsFolder): number | null {
+    if (!folder.isBook) return null;
+    const book = this.shelf.byId(folder.id);
+    if (!book || book.pages.length === 0) return null;
+    const idx = this.shelf.progressFor(folder.id);
+    if (idx <= 0) return null;
+    return Math.min(1, idx / book.pages.length);
   }
 
   /** Tap a tile: open a scanned book, otherwise descend into the folder. */
