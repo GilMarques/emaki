@@ -29,24 +29,20 @@
       <p>This folder has no subfolders or books.</p>
     </div>
   } @else {
+    <ion-button
+      class="up-bar"
+      shape="round"
+      fill="solid"
+      color="tertiary"
+      (click)="canGoUp() && goUp()"
+      aria-label="Go up one folder"
+    >
+      <ion-icon slot="start" name="arrow-up"></ion-icon>
+      Up
+    </ion-button>
+
     <ion-grid class="shelf">
       <ion-row>
-        <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
-          <div
-            class="tile up-tile"
-            role="button"
-            tabindex="0"
-            [class.is-disabled]="!canGoUp()"
-            (click)="canGoUp() && goUp()"
-            (keyup.enter)="canGoUp() && goUp()"
-            aria-label="Go up one folder"
-          >
-            <div class="folder">
-              <ion-icon name="arrow-up-circle-outline"></ion-icon>
-            </div>
-            <div class="tile-name">Up</div>
-          </div>
-        </ion-col>
         @for (child of children(); track child.id) {
           <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
             <div
@@ -65,7 +61,7 @@
                   }
                 </div>
               } @else {
-                <ion-icon class="folder" name="folder-outline"></ion-icon>
+                <ion-icon class="folder" name="folder"></ion-icon>
               }
               @if (progressFor(child) !== null) {
                 <div
@@ -89,15 +85,15 @@
 
   <div class="float-actions">
     <ion-button shape="round" (click)="displayOpen.set(true)">
-      <ion-icon slot="start" name="options-outline"></ion-icon>
+      <ion-icon slot="start" name="options"></ion-icon>
       Display
     </ion-button>
     <ion-button shape="round" (click)="filtersOpen.set(true)">
-      <ion-icon slot="start" name="color-filter-outline"></ion-icon>
+      <ion-icon slot="start" name="color-filter"></ion-icon>
       Filters
     </ion-button>
     <ion-button shape="round" (click)="scan()" [disabled]="scanning()">
-      <ion-icon slot="start" name="scan-outline"></ion-icon>
+      <ion-icon slot="start" name="scan"></ion-icon>
       Scan
     </ion-button>
   </div>

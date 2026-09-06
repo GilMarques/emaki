@@ -3,6 +3,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   IonApp,
   IonContent,
+  IonFooter,
   IonHeader,
   IonIcon,
   IonItem,
@@ -29,6 +30,7 @@ import { ViewerPage } from './features/viewer/viewer.page';
     RouterLinkActive,
     IonApp,
     IonContent,
+    IonFooter,
     IonHeader,
     IonIcon,
     IonItem,
