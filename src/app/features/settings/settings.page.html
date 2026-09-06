@@ -1,0 +1,23 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Settings</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list-header>Display</ion-list-header>
+  <ov-display-settings />
+
+  <ion-list-header>Filters</ion-list-header>
+  <ov-filters-settings />
+
+  <ion-list-header>App</ion-list-header>
+  <ion-list lines="inset">
+    <ion-item>
+      <ion-label>Reset all settings to defaults</ion-label>
+      <ion-button slot="end" fill="outline" color="danger" (click)="resetToDefaults()">
+        Reset
+      </ion-button>
+    </ion-item>
+  </ion-list>
+</ion-content>

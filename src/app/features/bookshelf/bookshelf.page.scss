@@ -2,28 +2,9 @@
   display: block;
 }
 
-.crumb-bar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--ion-background-color, #fff);
-  border-bottom: 1px solid var(--ion-color-step-100, #e0e0e0);
-}
-
 .crumbs {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.up-btn {
-  flex: 0 0 auto;
-  margin: 0;
-  --padding-start: 8px;
-  --padding-end: 8px;
 }
 
 .scan-btn {
@@ -182,6 +163,24 @@
   justify-content: center;
   background: var(--ion-color-step-50, #f3f3f3);
   border-radius: 6px;
+}
+
+.up-tile {
+  .folder {
+    border: 2px dashed var(--ion-color-step-200, #c8c8c8);
+    background: transparent;
+    color: var(--ion-color-step-400, #8a8a8a);
+  }
+
+  &.is-disabled {
+    cursor: default;
+    opacity: 0.45;
+
+    &:hover,
+    &:focus-visible {
+      background: transparent;
+    }
+  }
 }
 
 .tile-name {

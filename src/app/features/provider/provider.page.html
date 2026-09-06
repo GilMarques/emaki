@@ -1,0 +1,31 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Provider</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (providers().length === 0) {
+    <div class="placeholder">
+      <h2>No providers yet</h2>
+      <p>Manga sources will appear here as they are added.</p>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      @for (provider of providers(); track provider.id) {
+        <ion-item>
+          <ion-icon slot="start" name="globe-outline"></ion-icon>
+          <ion-label>
+            <h2>{{ provider.label }}</h2>
+            <p>{{ provider.url }}</p>
+          </ion-label>
+          @if (provider.tags.length > 0) {
+            <ion-text slot="end" class="tags" color="medium">
+              {{ provider.tags.join(' · ') }}
+            </ion-text>
+          }
+        </ion-item>
+      }
+    </ion-list>
+  }
+</ion-content>

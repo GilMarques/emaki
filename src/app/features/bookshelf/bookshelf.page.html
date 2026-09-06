@@ -1,22 +1,13 @@
-<ion-content>
-  <div class="crumb-bar">
+<ion-header>
+  <ion-toolbar>
     <ion-breadcrumbs class="crumbs" [maxItems]="4">
       @for (c of crumbs(); track c.id; let i = $index) {
         <ion-breadcrumb (click)="goToCrumb(i)">{{ c.name }}</ion-breadcrumb>
       }
     </ion-breadcrumbs>
-    @if (canGoUp()) {
-      <ion-button
-        class="up-btn"
-        size="small"
-        (click)="goUp()"
-        aria-label="Go up one folder"
-      >
-        <ion-icon slot="icon-only" name="arrow-up"></ion-icon>
-      </ion-button>
-    }
     <ion-button
       class="scan-btn"
+      slot="end"
       shape="round"
       size="small"
       (click)="scan()"
@@ -26,7 +17,10 @@
       <ion-icon slot="start" name="scan-outline"></ion-icon>
       Scan
     </ion-button>
-  </div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
 
   @if (scanning()) {
     <div class="status">
@@ -46,6 +40,22 @@
   } @else {
     <ion-grid class="shelf">
       <ion-row>
+        <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
+          <div
+            class="tile up-tile"
+            role="button"
+            tabindex="0"
+            [class.is-disabled]="!canGoUp()"
+            (click)="canGoUp() && goUp()"
+            (keyup.enter)="canGoUp() && goUp()"
+            aria-label="Go up one folder"
+          >
+            <div class="folder">
+              <ion-icon name="arrow-up-circle-outline"></ion-icon>
+            </div>
+            <div class="tile-name">Up</div>
+          </div>
+        </ion-col>
         @for (child of children(); track child.id) {
           <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
             <div

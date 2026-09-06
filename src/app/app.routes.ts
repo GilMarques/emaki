@@ -1,15 +1,16 @@
 import { Routes } from '@angular/router';
 
-/** Only the Bookshelf is a real route now; the Viewer is an overlay on top. */
+/** App routes. Only the Tabs shell is a real route now; the Viewer is an
+ *  overlay on top (see app.component.html). */
 export const APP_ROUTES: Routes = [
   {
     path: '',
-    redirectTo: 'bookshelf',
+    redirectTo: 'tabs',
     pathMatch: 'full',
   },
   {
-    path: 'bookshelf',
-    loadComponent: () =>
-      import('./features/bookshelf/bookshelf.page').then((m) => m.BookshelfPage),
+    path: 'tabs',
+    loadChildren: () =>
+      import('./features/tabs/tabs.routes').then((m) => m.TABS_ROUTES),
   },
 ];
