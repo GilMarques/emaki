@@ -91,6 +91,12 @@ export class ProviderChaptersPage {
     return providerId !== undefined && this.downloads.isDownloaded(providerId, chapter.id);
   }
 
+  /** True while the chapter is queued or being downloaded. */
+  public isActive(chapter: Chapter): boolean {
+    const providerId = this.provider()?.id;
+    return providerId !== undefined && this.downloads.active().has(`${providerId}:${chapter.id}`);
+  }
+
   /** Queue a single chapter for download. */
   public enqueueChapter(chapter: Chapter): void {
     const provider = this.provider();
@@ -127,6 +133,12 @@ export class ProviderChaptersPage {
     try {
       const chapters = await provider.getChapters(manga);
       this.chapters.set(chapters);
+      // Re-queue any chapters that were still downloading when the app last closed.
+      await this.downloads.restorePending(
+        provider,
+        chapters,
+        (c) => `${manga.title} — ${c.title}`,
+      );
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to load chapters');
     } finally {

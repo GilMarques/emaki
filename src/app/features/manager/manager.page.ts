@@ -9,7 +9,6 @@ import {
   IonList,
   IonMenuButton,
   IonNote,
-  IonProgressBar,
   IonSpinner,
   IonText,
   IonTitle,
@@ -17,17 +16,11 @@ import {
 } from '@ionic/angular/standalone';
 
 import { TaskManagerService } from '../../core/tasks/task-manager.service';
-import type { TaskProgress } from '../../core/tasks/task-manager.model';
-
-const KIND_LABEL: Record<TaskProgress['kind'], string> = {
-  upscale: 'Upscale',
-  download: 'Download',
-};
 
 /**
- * Manager page — lists every background task (upscaling, downloads) with a
- * per-task progress bar. Reads from TaskManagerService, which both the
- * enhancement engine and the download service report into.
+ * Manager page — lists every background task (upscaling, downloads) with its
+ * status. Reads from TaskManagerService, which both the enhancement engine
+ * and the download service report into.
  */
 @Component({
   selector: 'ov-manager',
@@ -43,7 +36,6 @@ const KIND_LABEL: Record<TaskProgress['kind'], string> = {
     IonList,
     IonMenuButton,
     IonNote,
-    IonProgressBar,
     IonSpinner,
     IonText,
     IonTitle,
@@ -58,15 +50,4 @@ export class ManagerPage {
   public readonly all = this.tasks.tasks;
 
   public readonly hasTasks = computed(() => this.tasks.tasks().length > 0);
-
-  public readonly tasksWithRatio = computed(() =>
-    this.tasks.tasks().map((t) => ({
-      ...t,
-      ratio: t.total === 0 ? 0 : t.done / t.total,
-    })),
-  );
-
-  public kindLabel(kind: TaskProgress['kind']): string {
-    return KIND_LABEL[kind];
-  }
 }

@@ -16,15 +16,14 @@
     </div>
   } @else {
     <ion-list lines="inset">
-      @for (task of tasksWithRatio(); track task.id + task.kind) {
+      @for (task of all(); track task.id + task.kind) {
         <ion-item>
           <ion-icon
             slot="start"
-            [name]="task.kind === 'download' ? 'download' : 'sparkles'"
+            [name]="task.kind === 'download' ? 'cloud-download-outline' : 'sparkles'"
           ></ion-icon>
           <ion-label>
             <h2>{{ task.title }}</h2>
-            <p>{{ kindLabel(task.kind) }} · {{ task.done }}/{{ task.total }}</p>
           </ion-label>
           <ion-note slot="end">
             @switch (task.status) {
@@ -46,14 +45,6 @@
             }
           </ion-note>
         </ion-item>
-        @if (task.status === 'processing' || task.status === 'queued') {
-          <ion-item class="progress-row">
-            <ion-progress-bar
-              [value]="task.ratio"
-              [buffer]="task.status === 'processing' ? 0.1 : undefined"
-            ></ion-progress-bar>
-          </ion-item>
-        }
       }
     </ion-list>
   }

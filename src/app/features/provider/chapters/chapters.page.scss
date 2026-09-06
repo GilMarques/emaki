@@ -7,3 +7,9 @@
   padding: 24px;
   text-align: center;
 }
+
+.center-status ion-spinner {
+  width: 96px;
+  height: 96px;
+  color: var(--statusline2);
+}
