@@ -125,6 +125,69 @@ export class ViewerPage {
   private readonly panOffsetX = signal(0);
   private readonly panOffsetY = signal(0);
 
+  // ──────────── Book-boundary slide transition ────────────
+
+  /** Horizontal offset (px) of the slide layer while crossing into the next/prev book. */
+  private readonly _bookTransitionX = signal(0);
+  public readonly bookTransitionX = this._bookTransitionX.asReadonly();
+
+  /** True while the slide layer is animating (CSS transition on transform). */
+  private readonly _slideAnimating = signal(false);
+  public readonly slideAnimating = this._slideAnimating.asReadonly();
+
+  /** Gates all stage input while a book transition is running. */
+  private readonly _transitioning = signal(false);
+
+  /** Active book-transition direction during a drag, or null. */
+  private readonly _transitionDir = signal<'next' | 'prev' | null>(null);
+  /** True while a boundary drag is being finger-followed. */
+  private bookDragActive = false;
+
+  /** Transform for the slide layer (translateX only — pan/zoom stays on the spread). */
+  public readonly slideTransform = computed(() => `translateX(${this._bookTransitionX()}px)`);
+
+  /**
+   * Stage-relative rect (px) where the target book's page is rendered during
+   * a boundary drag. Matches the current page's rect so the reveal lines up
+   * exactly with where the mounted book will appear.
+   */
+  public readonly previewRect = computed(() => {
+    const stage = this.hostRect();
+    const img = this.pageImageRect();
+    if (stage === null || img === null) return null;
+    return {
+      left: img.left - stage.left,
+      top: img.top - stage.top,
+      width: img.width,
+      height: img.height,
+    };
+  });
+
+  /** Transform for the preview layer: it slides in from the opposite edge,
+   *  tracking the finger (translateX = slide - sign·width). */
+  public readonly previewTransform = computed(() => {
+    const dir = this._transitionDir();
+    const slide = this._bookTransitionX();
+    const width = this.hostRect()?.width ?? window.innerWidth;
+    if (dir === null) return 'translateX(0px)';
+    const sign = this.bookCommitSign(dir);
+    return `translateX(${slide - sign * width}px)`;
+  });
+
+  /** URL of the target book's resume page, shown as the transition preview. */
+  public readonly boundaryPreviewUrl = computed<string | null>(() => {
+    const dir = this._transitionDir();
+    const state = this.bookstore.state();
+    if (dir === null || state.book === null) return null;
+    const id =
+      dir === 'next' ? this.shelf.nextBookId(state.book.id) : this.shelf.prevBookId(state.book.id);
+    if (id === null) return null;
+    const book = this.shelf.byId(id);
+    if (book === undefined || book.pages.length === 0) return null;
+    const idx = clamp(this.shelf.progressFor(id), 0, book.pages.length - 1);
+    return book.pages[idx].url ?? book.pages[0].url;
+  });
+
   public readonly panTransform = computed(() => {
     const s = this.bookstore.zoom();
     return `translate(${this.panOffsetX()}px, ${this.panOffsetY()}px) scale(${s})`;
@@ -294,6 +357,139 @@ export class ViewerPage {
     this.flip.turnToPage(index);
   }
 
+  // ──────────── Book-boundary slide transition ────────────
+
+  /** Drag direction toward the next book, or null when not at a boundary. */
+  private bookBoundaryDirection(dx: number): 'next' | 'prev' | null {
+    const rtl = this.direction() === 'rtl';
+    if (rtl ? dx > 0 : dx < 0) return this.bookstore.hasNext() ? null : 'next';
+    if (rtl ? dx < 0 : dx > 0) return this.bookstore.hasPrev() ? null : 'prev';
+    return null;
+  }
+
+  /** Tap zone under a quick tap: which book boundary it points at. */
+  private bookTapZone(clientX: number): 'next' | 'prev' | null {
+    const stage = this.hostRect();
+    if (stage === null) return null;
+    const x = clientX - stage.left;
+    const third = stage.width / 3;
+    const rtl = this.direction() === 'rtl';
+    if (x < third) return rtl ? 'next' : 'prev';
+    if (x > 2 * third) return rtl ? 'prev' : 'next';
+    return null;
+  }
+
+  /** Viewport-x sign the slide commits toward: -1 = left, +1 = right. */
+  private bookCommitSign(dir: 'next' | 'prev'): 1 | -1 {
+    const rtl = this.direction() === 'rtl';
+    return dir === 'next' === !rtl ? -1 : 1;
+  }
+
+  /** Start a finger-followed boundary drag. */
+  private beginBookTransition(dir: 'next' | 'prev'): void {
+    this.clearHoldTimer();
+    this.gestureAxis = null;
+    this._transitionDir.set(dir);
+    this.bookDragActive = true;
+    this._transitioning.set(true);
+    this._bookTransitionX.set(0);
+  }
+
+  /** Track the slide with the pointer during a boundary drag. The slide only
+   *  moves toward the commit side (LTR next → left, prev → right), so the
+   *  drag feels like pushing the current book off-screen. */
+  private followBookDrag(event: PointerEvent): void {
+    const dir = this._transitionDir();
+    if (dir === null) return;
+    const width = this.hostRect()?.width ?? window.innerWidth;
+    const dx = event.clientX - this.holdStartX;
+    const sign = this.bookCommitSign(dir);
+    this._bookTransitionX.set(sign < 0 ? clamp(dx, -width, 0) : clamp(dx, 0, width));
+    this.recordPanSample(event.clientX, event.clientY);
+  }
+
+  /** True when a boundary drag should commit to the transition. */
+  private shouldCommitBookTransition(dir: 'next' | 'prev', slide: number, width: number): boolean {
+    const sign = this.bookCommitSign(dir);
+    const velocity = this.computePanVelocity('horizontal');
+    const fling = Math.abs(velocity) > 1.5 && Math.sign(velocity) === sign;
+    const dist = Math.abs(slide) > width * ViewerPage.BOOK_SWIPE_RATIO && Math.sign(slide) === sign;
+    return dist || fling;
+  }
+
+  /** Run the full slide transition into the next/prev book. */
+  private async commitBookTransition(dir: 'next' | 'prev'): Promise<void> {
+    const state = this.bookstore.state();
+    if (state.book === null) {
+      this.cancelBookTransition();
+      return;
+    }
+    const hasTarget =
+      dir === 'next'
+        ? this.shelf.nextBookId(state.book.id) !== null
+        : this.shelf.prevBookId(state.book.id) !== null;
+    if (!hasTarget) {
+      this.cancelBookTransition();
+      return;
+    }
+
+    this.bookDragActive = false;
+    this._transitioning.set(true);
+    const width = this.hostRect()?.width ?? window.innerWidth;
+    const target = this.bookCommitSign(dir) * width;
+
+    // Finish the push: the current book glides off-screen, fully revealing
+    // the preview (target book's resume page) behind it.
+    this._slideAnimating.set(true);
+    this._bookTransitionX.set(target);
+    await sleep(ViewerPage.BOOK_TRANSITION_MS);
+
+    // Swap the book and wait for the flip instance to remount at the same
+    // resume page the preview shows.
+    if (dir === 'next') this.bookstore.openNext();
+    else this.bookstore.openPrev();
+    this.resetPan();
+    await this.waitForFlipMount();
+
+    // Snap back to rest with no transition: the mounted book renders exactly
+    // where the preview did, so the hand-off is seamless. Clear the preview.
+    this._slideAnimating.set(false);
+    this._bookTransitionX.set(0);
+    this._transitionDir.set(null);
+    this._transitioning.set(false);
+  }
+
+  /** Snap the slide back to rest (no commit). */
+  private cancelBookTransition(): void {
+    this.bookDragActive = false;
+    this._slideAnimating.set(true);
+    this._bookTransitionX.set(0);
+    setTimeout(() => {
+      this._slideAnimating.set(false);
+      this._transitioning.set(false);
+      this._transitionDir.set(null);
+    }, ViewerPage.BOOK_TRANSITION_MS);
+  }
+
+  /** Resolve once the flip instance is mounted (new book ready), or timeout. */
+  private waitForFlipMount(timeoutMs = 3000): Promise<void> {
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const tick = (): void => {
+        if (this.flip.mounted()) {
+          resolve();
+          return;
+        }
+        if (performance.now() - start > timeoutMs) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+  }
+
   @HostListener('wheel', ['$event'])
   public onWheel(event: WheelEvent): void {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -327,6 +523,10 @@ export class ViewerPage {
   private static readonly CLOSE_THRESHOLD = 100;
   /** Height of the tap zone at the bottom of the screen that opens the pages menu. */
   private static readonly PAGES_MENU_ZONE = 72;
+  /** Horizontal slide-out duration for the book-boundary transition (ms). */
+  private static readonly BOOK_TRANSITION_MS = 300;
+  /** Fraction of the viewport a boundary swipe must cover to commit. */
+  private static readonly BOOK_SWIPE_RATIO = 0.25;
   /** Horizontal slop before a drag leaves the hold window (vertical uses axis lock only). */
   private static readonly HORIZONTAL_SLOP_PX = 8;
   /** Per-frame velocity decay while coasting after a pan release (~60fps frame). */
@@ -356,6 +556,8 @@ export class ViewerPage {
     if (stage === undefined) return;
     // Ignore input while a turn animation is running.
     if (this.flip.flipState() === 'flipping') return;
+    // Ignore input while a book-boundary slide is running.
+    if (this._transitioning()) return;
 
     this.stopMomentum();
     this.magnifierState.setHolding(true);
@@ -386,6 +588,11 @@ export class ViewerPage {
     const dx = event.clientX - this.holdStartX;
     const dy = event.clientY - this.holdStartY;
 
+    if (this.bookDragActive && this._transitionDir() !== null) {
+      this.followBookDrag(event);
+      return;
+    }
+
     if (this.magnifierState.relayFlip()) {
       this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
       return;
@@ -395,11 +602,18 @@ export class ViewerPage {
       this.applyPanFromDrag(dx, dy);
       this.recordPanSample(event.clientX, event.clientY);
       if (this.gestureAxis === 'horizontal' && this.flipIntent(dx, event.clientX) === 'fold') {
-        // Reached the page edge: stop panning and start the curl fold at the
-        // current pointer (the original hold point may be far away after the pan).
+        // Reached the page edge: at a book boundary this starts the book
+        // slide; otherwise it hands off to the curl fold at the current
+        // pointer (the original hold point may be far away after the pan).
         this.magnifierState.setRelayPan(false);
-        this.beginFlipRelay(event.clientX, event.clientY);
-        this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
+        const boundary = this.bookBoundaryDirection(dx);
+        if (boundary !== null) {
+          this.beginBookTransition(boundary);
+          this.followBookDrag(event);
+        } else {
+          this.beginFlipRelay(event.clientX, event.clientY);
+          this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
+        }
       }
       return;
     }
@@ -419,6 +633,22 @@ export class ViewerPage {
     const wasPan = this.magnifierState.relayPan();
     const axis = this.gestureAxis;
 
+    if (this.bookDragActive && this._transitionDir() !== null) {
+      const dir = this._transitionDir() as 'next' | 'prev';
+      const width = this.hostRect()?.width ?? window.innerWidth;
+      const slide = this._bookTransitionX();
+      this.bookDragActive = false;
+      if (this.shouldCommitBookTransition(dir, slide, width)) {
+        void this.commitBookTransition(dir);
+      } else {
+        this.cancelBookTransition();
+      }
+      this.clearHoldTimer();
+      this.gestureAxis = null;
+      this.magnifierState.endGesture();
+      return;
+    }
+
     if (this.magnifierState.relayFlip()) {
       // Release: the patched lib completes the fold from its current position
       // (stopMove commits whenever state is USER_FOLD) at any zoom — relay
@@ -427,6 +657,10 @@ export class ViewerPage {
     } else if (!this.magnifierState.active() && !wasPan && this.isQuickTap(event)) {
       if (this.isBottomZoneTap(event.clientY)) {
         this.openPagesMenu();
+      } else if (this.bookTapZone(event.clientX) === 'next' && !this.bookstore.hasNext()) {
+        void this.commitBookTransition('next');
+      } else if (this.bookTapZone(event.clientX) === 'prev' && !this.bookstore.hasPrev()) {
+        void this.commitBookTransition('prev');
       } else if (this.bookstore.cornersVisible()) {
         this.flip.relayTap(event.clientX, event.clientY);
       } else {
@@ -504,6 +738,16 @@ export class ViewerPage {
     }
 
     if (Math.abs(dx) < ViewerPage.HORIZONTAL_SLOP_PX) {
+      return;
+    }
+
+    // Book boundary: a fold gesture past the last/first page starts a book
+    // slide instead (the lib has no page to flip there). Pan gestures still
+    // pan — only intercept when the drag would otherwise be a page fold.
+    const boundary = this.bookBoundaryDirection(dx);
+    if (boundary !== null && this.flipIntent(dx, event.clientX) === 'fold') {
+      this.beginBookTransition(boundary);
+      this.followBookDrag(event);
       return;
     }
 
@@ -771,6 +1015,7 @@ export class ViewerPage {
     this.clearHoldTimer();
     this.stopMomentum();
     this.gestureAxis = null;
+    this.bookDragActive = false;
     this.magnifierState.endGesture();
   }
 
@@ -780,6 +1025,7 @@ export class ViewerPage {
       this.clearHoldTimer();
       this.stopMomentum();
       this.gestureAxis = null;
+      this.bookDragActive = false;
       this.magnifierState.endGesture();
     }
   }
@@ -787,6 +1033,10 @@ export class ViewerPage {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildFilterString(filters: FilterSettings): string {

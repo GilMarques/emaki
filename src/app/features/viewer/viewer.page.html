@@ -10,11 +10,30 @@
     (pointercancel)="onStagePointerUp($event)"
   >
     @if (openBook() !== null) {
-      <ov-book-spread
-        [book]="openBook()"
-        [style.transform]="panTransform()"
-        [style.transform-origin]="'0 0'"
-      />
+      @if (boundaryPreviewUrl(); as url) {
+        <div
+          class="book-preview"
+          [class.sliding]="slideAnimating()"
+          [style.left.px]="previewRect()?.left ?? 0"
+          [style.top.px]="previewRect()?.top ?? 0"
+          [style.width.px]="previewRect()?.width ?? 0"
+          [style.height.px]="previewRect()?.height ?? 0"
+          [style.transform]="previewTransform()"
+        >
+          <ion-img [src]="url" alt=""></ion-img>
+        </div>
+      }
+      <div
+        class="book-slide"
+        [class.sliding]="slideAnimating()"
+        [style.transform]="slideTransform()"
+      >
+        <ov-book-spread
+          [book]="openBook()"
+          [style.transform]="panTransform()"
+          [style.transform-origin]="'0 0'"
+        />
+      </div>
      } @else {
        <div class="empty-state">
          <h1>No book open</h1>
