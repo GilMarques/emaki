@@ -1,10 +1,10 @@
-# AGENTS.md — OpenViewer
+# AGENTS.md — Emaki
 
 Guidance for AI coding agents and contributors working on this repo.
 
 ## Project
 
-**OpenViewer** — cross-platform book/comic reader. Initially mobile (Android first), eventually desktop. Inspired by Perfect Viewer; ships EPUB, images, archives (CBZ/CBR/7Z), with PDF/DJVU later via plugins.
+**Emaki** — cross-platform book/comic reader. Initially mobile (Android first), eventually desktop. Inspired by Perfect Viewer; ships EPUB, images, archives (CBZ/CBR/7Z), with PDF/DJVU later via plugins.
 
 ## Stack
 
@@ -23,7 +23,7 @@ Guidance for AI coding agents and contributors working on this repo.
 ## Repo layout
 
 ```
-open-viewer/
+emaki/
 ├── src/
 │   ├── app/
 │   │   ├── core/           # singletons: services, guards, interceptors

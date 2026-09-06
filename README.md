@@ -1,4 +1,4 @@
-# OpenViewer
+# Emaki
 
 A fast, no-nonsense book and comic reader for mobile (and eventually desktop). Built on Angular + Ionic + Capacitor so the chrome stays web-native and the renderer can graduate to native code where it matters.
 
