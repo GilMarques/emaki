@@ -2,6 +2,27 @@
   display: block;
 }
 
+/* Text label shown to the left of each action FAB button (from title attr). */
+ion-fab-button[title] {
+  position: relative;
+}
+
+ion-fab-button[title]::after {
+  position: absolute;
+  content: attr(title);
+  z-index: 1;
+  right: 55px;
+  bottom: 0px;
+  background-color: var(--ion-color-primary);
+  padding: 9px;
+  border-radius: 15px;
+  color: white;
+  box-shadow:
+    0 3px 5px -1px rgba(0, 0, 0, 0.2),
+    0 6px 10px 0 rgba(0, 0, 0, 0.14),
+    0 1px 18px 0 rgba(0, 0, 0, 0.12);
+}
+
 .crumbs {
   flex: 1 1 auto;
   min-width: 0;
@@ -13,31 +34,6 @@
   width: 38px;
   height: 38px;
   margin: 0 8px 0 0;
-}
-
-/* Floating Display / Filters buttons pinned to the bottom of the screen. */
-.float-actions {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 16px;
-  z-index: 20;
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  pointer-events: none;
-
-  ion-button {
-    pointer-events: auto;
-    --padding-start: 24px;
-    --padding-end: 24px;
-    font-size: 1.15rem;
-    height: 64px;
-
-    ion-icon {
-      font-size: 28px;
-    }
-  }
 }
 
 .status {
@@ -69,7 +65,7 @@
 
 .shelf {
   --ion-grid-padding: 12px;
-  padding: 12px 12px 96px;
+  padding: 4px 12px 96px;
 }
 
 .tile {
@@ -104,13 +100,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 2 / 3;
-}
-
-/* Stack of book covers shown for a container folder (first cover on top). */
-.cover-stack {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2 / 3;
+  overflow: hidden;
 }
 
 .stack-img {
@@ -160,22 +150,13 @@
   border-radius: 6px;
 }
 
-.up-tile {
-  .folder {
-    border: 2px dashed var(--ion-color-step-200, #c8c8c8);
-    background: transparent;
-    color: var(--ion-color-step-400, #8a8a8a);
-  }
-
-  &.is-disabled {
-    cursor: default;
-    opacity: 0.45;
-
-    &:hover,
-    &:focus-visible {
-      background: transparent;
-    }
-  }
+.up-bar {
+  margin: 8px 12px 0;
+  width: 20%;
+  min-width: 96px;
+  --border-radius: 8px;
+  --background: var(--statusline1);
+  --color: #fff;
 }
 
 .tile-name {

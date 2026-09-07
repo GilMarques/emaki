@@ -115,7 +115,7 @@ export class MangaDexConnector extends Connector {
     params.set('limit', String(PAGE_SIZE));
     params.set('includes[]', 'cover_art');
     params.set('hasAvailableChapters', 'true');
-    params.set('order[latestChapter]', 'desc');
+    params.set('order[latestUploadedChapter]', 'desc');
     for (const rating of CONTENT_RATINGS) {
       params.append('contentRating[]', rating);
     }

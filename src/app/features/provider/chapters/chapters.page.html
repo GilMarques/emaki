@@ -1,0 +1,48 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="'/provider/' + (provider()?.id ?? '')"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ manga()?.title ?? 'Chapters' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="downloadAll()" [disabled]="loading() || downloadingAll() || allDownloaded()">
+        <ion-icon slot="start" name="download"></ion-icon>
+        Download all
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (loading()) {
+    <div class="center-status">
+      <ion-spinner name="crescent"></ion-spinner>
+    </div>
+  } @else if (error() !== null) {
+    <div class="center-status">
+      <ion-text color="danger">{{ error() }}</ion-text>
+    </div>
+  } @else if (chapters().length === 0) {
+    <div class="center-status">
+      <ion-text color="medium">No chapters found</ion-text>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      @for (chapter of sortedChapters(); track chapter.id) {
+        <ion-item button (click)="enqueueChapter(chapter)" [disabled]="downloadingAll()">
+          <ion-icon slot="start" name="document-text-outline"></ion-icon>
+          <ion-label>
+            <h2>{{ chapter.title }}</h2>
+          </ion-label>
+          @if (isActive(chapter)) {
+            <ion-spinner slot="end" name="crescent"></ion-spinner>
+          } @else if (isDownloaded(chapter)) {
+            <ion-icon slot="end" name="checkmark-circle" color="success"></ion-icon>
+          } @else {
+            <ion-icon slot="end" name="cloud-download-outline"></ion-icon>
+          }
+        </ion-item>
+      }
+    </ion-list>
+  }
+</ion-content>

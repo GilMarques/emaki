@@ -50,12 +50,25 @@ export class ConnectorRequestService {
     if (this.native) {
       const response = await CapacitorHttp.get({ url, headers, responseType });
       const data =
-        responseType === 'arraybuffer' ? this.toArrayBuffer(response.data) : String(response.data);
+        responseType === 'arraybuffer'
+          ? this.toArrayBuffer(response.data)
+          : this.toText(response.data);
       return { status: response.status, data: data as T };
     }
     const response = await fetch(url, { headers });
     const data = responseType === 'arraybuffer' ? await response.arrayBuffer() : await response.text();
     return { status: response.status, data: data as T };
+  }
+
+  /**
+   * Capacitor's Android HTTP layer can hand back an already-parsed object for
+   * JSON bodies even when `responseType: 'text'` was requested. Normalise to a
+   * string so `fetchText`/`fetchJson` always get raw text: strings pass through,
+   * objects are re-serialised.
+   */
+  private toText(data: unknown): string {
+    if (typeof data === 'string') return data;
+    return data === null || data === undefined ? '' : JSON.stringify(data);
   }
 
   /** Capacitor returns binary bodies as base64 — normalise to ArrayBuffer. */

@@ -18,6 +18,14 @@ ion-menu ion-item.selected {
 .menu-logo {
   width: 28px;
   height: 28px;
-  border-radius: 0;
   margin-left: 12px;
+}
+
+ion-menu ion-footer {
+  --background: transparent;
+  background: transparent;
+}
+
+ion-menu ion-footer ion-item {
+  --background: var(--ion-background-color);
 }

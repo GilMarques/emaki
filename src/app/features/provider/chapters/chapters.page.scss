@@ -1,0 +1,15 @@
+.center-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.center-status ion-spinner {
+  width: 96px;
+  height: 96px;
+  color: var(--statusline2);
+}

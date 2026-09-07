@@ -1,0 +1,67 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/provider"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ provider()?.label ?? 'Browse' }}</ion-title>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      autofocus
+      placeholder="Search manga"
+      [value]="query()"
+      (ionInput)="onInput($event)"
+      (keydown.enter)="search(query())"
+      [disabled]="loading()"
+      enterkeyhint="search"
+    ></ion-searchbar>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (hasSearched()) {
+    <ion-refresher slot="fixed" (ionRefresh)="onRefresh($event)">
+      <ion-refresher-content pullingIcon="chevron-down-circle-outline" refreshingSpinner="crescent"></ion-refresher-content>
+    </ion-refresher>
+  }
+
+  @if (loading()) {
+    <div class="center-status">
+      <ion-spinner name="crescent"></ion-spinner>
+    </div>
+  } @else if (idle()) {
+    <div class="center-status">
+      <ion-text color="medium">Search for a manga</ion-text>
+    </div>
+  } @else if (results().length === 0) {
+    <div class="center-status">
+      <ion-text color="medium">No results found</ion-text>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      @for (manga of results(); track manga.id) {
+        <ion-item button (click)="onMangaClick(manga)">
+          @if (manga.coverUrl) {
+            <ion-thumbnail slot="start">
+              <ion-img [src]="manga.coverUrl" [alt]="manga.title"></ion-img>
+            </ion-thumbnail>
+          } @else {
+            <ion-icon slot="start" name="book-outline"></ion-icon>
+          }
+          <ion-label>
+            <h2>{{ manga.title }}</h2>
+          </ion-label>
+          <ion-icon slot="end" name="chevron-forward"></ion-icon>
+        </ion-item>
+      }
+    </ion-list>
+  }
+</ion-content>
+
+<ion-toast
+  [isOpen]="toastMessage() !== null"
+  [message]="toastMessage() ?? ''"
+  [duration]="4000"
+  color="danger"
+  (ionToastDidDismiss)="toastMessage.set(null)"
+></ion-toast>

@@ -15,24 +15,35 @@
       <ion-list lines="none">
         <ion-menu-toggle>
           <ion-item button routerLink="/library" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="library-outline"></ion-icon>
+            <ion-icon aria-hidden="true" slot="start" name="library"></ion-icon>
             <ion-label>Library</ion-label>
           </ion-item>
         </ion-menu-toggle>
         <ion-menu-toggle>
           <ion-item button routerLink="/provider" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="globe-outline"></ion-icon>
+            <ion-icon aria-hidden="true" slot="start" name="globe"></ion-icon>
             <ion-label>Provider</ion-label>
           </ion-item>
         </ion-menu-toggle>
         <ion-menu-toggle>
-          <ion-item button routerLink="/settings" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="settings-outline"></ion-icon>
-            <ion-label>Settings</ion-label>
+          <ion-item button routerLink="/manager" routerLinkActive="selected">
+            <ion-icon aria-hidden="true" slot="start" name="list"></ion-icon>
+            <ion-label>Manager</ion-label>
           </ion-item>
         </ion-menu-toggle>
       </ion-list>
     </ion-content>
+
+    <ion-footer>
+      <ion-list class="menu-bottom" lines="none">
+        <ion-menu-toggle>
+          <ion-item button routerLink="/settings" routerLinkActive="selected">
+            <ion-icon aria-hidden="true" slot="start" name="settings"></ion-icon>
+            <ion-label>Settings</ion-label>
+          </ion-item>
+        </ion-menu-toggle>
+      </ion-list>
+    </ion-footer>
   </ion-menu>
 
   <ion-router-outlet id="main-content"></ion-router-outlet>

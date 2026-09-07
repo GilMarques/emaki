@@ -19,6 +19,21 @@ export const APP_ROUTES: Routes = [
       import('./features/provider/provider.page').then((m) => m.ProviderPage),
   },
   {
+    path: 'provider/:providerId',
+    loadComponent: () =>
+      import('./features/provider/browse/browse.page').then((m) => m.ProviderBrowsePage),
+  },
+  {
+    path: 'provider/:providerId/manga/:mangaId',
+    loadComponent: () =>
+      import('./features/provider/chapters/chapters.page').then((m) => m.ProviderChaptersPage),
+  },
+  {
+    path: 'manager',
+    loadComponent: () =>
+      import('./features/manager/manager.page').then((m) => m.ManagerPage),
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.page').then((m) => m.SettingsPage),
