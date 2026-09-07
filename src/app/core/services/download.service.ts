@@ -74,7 +74,7 @@ export class DownloadService {
       map.set(`${c.providerId}:${c.chapterId}`, {
         providerId: c.providerId,
         chapterId: c.chapterId,
-        mangaTitle: c.mangaTitle,
+        mangaTitle: c.mangaTitle ?? '',
         title: c.title,
         files: c.files,
       });

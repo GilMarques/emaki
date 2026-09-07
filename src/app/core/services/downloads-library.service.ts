@@ -60,7 +60,9 @@ export class DownloadsLibraryService {
 
     const bySeries = new Map<string, ChapterDownload[]>();
     for (const c of chapters) {
-      const key = c.mangaTitle.trim() || 'Unknown series';
+      // Chapters persisted before the `mangaTitle` field existed can be
+      // missing it — never assume it's set.
+      const key = (c.mangaTitle ?? '').trim() || 'Unknown series';
       const list = bySeries.get(key);
       if (list) list.push(c);
       else bySeries.set(key, [c]);
