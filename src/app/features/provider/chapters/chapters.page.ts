@@ -102,7 +102,7 @@ export class ProviderChaptersPage {
     const provider = this.provider();
     const manga = this.manga();
     if (!provider || !manga) return;
-    this.downloads.enqueue(provider, chapter, `${manga.title} — ${chapter.title}`);
+    this.downloads.enqueue(provider, chapter, manga.title, `${manga.title} — ${chapter.title}`);
   }
 
   /** Queue every chapter for download. */
@@ -112,11 +112,7 @@ export class ProviderChaptersPage {
     if (!provider || !manga) return;
     this.downloadingAll.set(true);
     try {
-      this.downloads.enqueueMany(
-        provider,
-        this.chapters(),
-        (c) => `${manga.title} — ${c.title}`,
-      );
+      this.downloads.enqueueMany(provider, this.chapters(), manga.title, (c) => `${manga.title} — ${c.title}`);
     } finally {
       this.downloadingAll.set(false);
     }
@@ -134,11 +130,7 @@ export class ProviderChaptersPage {
       const chapters = await provider.getChapters(manga);
       this.chapters.set(chapters);
       // Re-queue any chapters that were still downloading when the app last closed.
-      await this.downloads.restorePending(
-        provider,
-        chapters,
-        (c) => `${manga.title} — ${c.title}`,
-      );
+      await this.downloads.restorePending(provider, chapters, manga.title, (c) => `${manga.title} — ${c.title}`);
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to load chapters');
     } finally {

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import {
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
@@ -16,6 +17,7 @@ import {
 } from '@ionic/angular/standalone';
 
 import { TaskManagerService } from '../../core/tasks/task-manager.service';
+import { DownloadService } from '../../core/services/download.service';
 
 /**
  * Manager page — lists every background task (upscaling, downloads) with its
@@ -27,6 +29,7 @@ import { TaskManagerService } from '../../core/tasks/task-manager.service';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    IonButton,
     IonButtons,
     IonContent,
     IonHeader,
@@ -46,8 +49,14 @@ import { TaskManagerService } from '../../core/tasks/task-manager.service';
 })
 export class ManagerPage {
   private readonly tasks = inject(TaskManagerService);
+  private readonly downloads = inject(DownloadService);
 
   public readonly all = this.tasks.tasks;
 
   public readonly hasTasks = computed(() => this.tasks.tasks().length > 0);
+
+  /** Delete a finished chapter download (removes files + task). */
+  public remove(chapterId: string): void {
+    void this.downloads.removeByChapterId(chapterId);
+  }
 }

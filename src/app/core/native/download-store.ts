@@ -15,6 +15,9 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 export interface StoredChapter {
   readonly providerId: string;
   readonly chapterId: string;
+  /** Series (manga) title the chapter belongs to, used to group downloads. */
+  readonly mangaTitle: string;
+  /** Human chapter title. */
   readonly title: string;
   /** File names (e.g. `000.jpg`) saved under the chapter directory. */
   readonly files: readonly string[];
@@ -59,9 +62,17 @@ export class DownloadStore {
   }
 
   /** Record a finished chapter (all its files saved). */
-  public async saveChapter(providerId: string, chapterId: string, title: string, files: readonly string[]): Promise<void> {
+  public async saveChapter(
+    providerId: string,
+    chapterId: string,
+    mangaTitle: string,
+    title: string,
+    files: readonly string[],
+  ): Promise<void> {
     const key = `${providerId}:${chapterId}`;
-    this._chapters.update((m) => new Map(m).set(key, { providerId, chapterId, title, files }));
+    this._chapters.update((m) =>
+      new Map(m).set(key, { providerId, chapterId, mangaTitle, title, files }),
+    );
     await this.persist();
   }
 

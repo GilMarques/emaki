@@ -15,6 +15,8 @@ import {
 export interface ChapterDownload {
   readonly providerId: string;
   readonly chapterId: string;
+  /** Series (manga) title, used to group chapters in the library. */
+  readonly mangaTitle: string;
   readonly title: string;
   readonly files: readonly string[];
 }
@@ -24,6 +26,7 @@ interface QueuedChapter {
   readonly key: string;
   readonly provider: Connector;
   readonly chapter: Chapter;
+  readonly mangaTitle: string;
   readonly title: string;
 }
 
@@ -67,6 +70,7 @@ export class DownloadService {
       map.set(`${c.providerId}:${c.chapterId}`, {
         providerId: c.providerId,
         chapterId: c.chapterId,
+        mangaTitle: c.mangaTitle,
         title: c.title,
         files: c.files,
       });
@@ -87,10 +91,10 @@ export class DownloadService {
   }
 
   /** Add a chapter to the download queue. Idempotent per provider+chapter. */
-  public enqueue(provider: Connector, chapter: Chapter, title: string): void {
+  public enqueue(provider: Connector, chapter: Chapter, mangaTitle: string, title: string): void {
     const key = `${provider.id}:${chapter.id}`;
     if (this.store.get(provider.id, chapter.id) !== undefined || this._active().has(key)) return;
-    this._queue.push({ key, provider, chapter, title });
+    this._queue.push({ key, provider, chapter, mangaTitle, title });
     this._active.update((s) => new Set(s).add(key));
     this.tasks.register({ id: chapter.id, kind: 'download', title, total: 0 });
     this.tasks.update(chapter.id, 'download', { status: 'queued' });
@@ -99,8 +103,13 @@ export class DownloadService {
   }
 
   /** Add many chapters to the queue (e.g. "download all"). */
-  public enqueueMany(provider: Connector, chapters: readonly Chapter[], titleFor: (c: Chapter) => string): void {
-    for (const chapter of chapters) this.enqueue(provider, chapter, titleFor(chapter));
+  public enqueueMany(
+    provider: Connector,
+    chapters: readonly Chapter[],
+    mangaTitle: string,
+    titleFor: (c: Chapter) => string,
+  ): void {
+    for (const chapter of chapters) this.enqueue(provider, chapter, mangaTitle, titleFor(chapter));
   }
 
   /** Drop a downloaded chapter and its files. */
@@ -116,8 +125,26 @@ export class DownloadService {
     this.tasks.remove(chapterId, 'download');
   }
 
+  /**
+   * Remove every downloaded chapter matching a chapter id. The Manager page
+   * only knows tasks by chapter id, so it uses this to delete without the
+   * provider id (a given chapter id is effectively unique per provider in
+   * practice; all matches are removed defensively).
+   */
+  public async removeByChapterId(chapterId: string): Promise<void> {
+    const matches = [...this.store.chapters().values()].filter((c) => c.chapterId === chapterId);
+    for (const c of matches) {
+      await this.remove(c.providerId, c.chapterId);
+    }
+  }
+
   /** Re-queue any chapters that were in-flight when the app last closed. */
-  public async restorePending(provider: Connector, chapters: readonly Chapter[], titleFor: (c: Chapter) => string): Promise<void> {
+  public async restorePending(
+    provider: Connector,
+    chapters: readonly Chapter[],
+    mangaTitle: string,
+    titleFor: (c: Chapter) => string,
+  ): Promise<void> {
     const pending = this.loadPending();
     if (pending.size === 0) return;
     const byKey = new Map(chapters.map((c) => [`${provider.id}:${c.id}`, c]));
@@ -130,7 +157,7 @@ export class DownloadService {
         this.forgetPending(key);
         continue;
       }
-      this.enqueue(provider, chapter, titleFor(chapter));
+      this.enqueue(provider, chapter, mangaTitle, titleFor(chapter));
     }
   }
 
@@ -249,7 +276,7 @@ export class DownloadService {
     // completion events and assume the destination filename).
     if (done.size > 0) {
       const files = [...done].sort((a, b) => a - b).map((i) => `${String(i).padStart(3, '0')}.jpg`);
-      await this.store.saveChapter(provider.id, chapter.id, item.title, files);
+      await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, files);
     }
   }
 
@@ -263,7 +290,7 @@ export class DownloadService {
       files.push(`${String(i).padStart(3, '0')}.jpg`);
       this.tasks.update(chapter.id, 'download', { done: i + 1 });
     }
-    await this.store.saveChapter(provider.id, chapter.id, item.title, files);
+    await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, files);
   }
 
   // ───────────────────────────── Pending persistence ─────────────────────────────

@@ -12,7 +12,7 @@
     <div class="placeholder">
       <ion-icon name="checkmark-circle"></ion-icon>
       <h2>No tasks</h2>
-      <p>Upscaling and download jobs will appear here.</p>
+
     </div>
   } @else {
     <ion-list lines="inset">
@@ -20,7 +20,7 @@
         <ion-item>
           <ion-icon
             slot="start"
-            [name]="task.kind === 'download' ? 'cloud-download-outline' : 'sparkles'"
+            [name]="task.kind === 'download' ? 'document-outline' : 'sparkles'"
           ></ion-icon>
           <ion-label>
             <h2>{{ task.title }}</h2>
@@ -34,7 +34,11 @@
                 <ion-spinner name="crescent"></ion-spinner>
               }
               @case ('done') {
-                <ion-text color="success">Done</ion-text>
+                @if (task.kind === 'download') {
+                  <ion-icon name="checkmark-circle" color="success"></ion-icon>
+                } @else {
+                  <ion-text color="success">Done</ion-text>
+                }
               }
               @case ('error') {
                 <ion-text color="danger">Error</ion-text>
@@ -44,6 +48,17 @@
               }
             }
           </ion-note>
+          @if (task.kind === 'download' && task.status === 'done') {
+            <ion-button
+              slot="end"
+              fill="clear"
+              color="medium"
+              (click)="remove(task.id)"
+              aria-label="Delete download"
+            >
+              <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+            </ion-button>
+          }
         </ion-item>
       }
     </ion-list>
