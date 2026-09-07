@@ -1,15 +1,13 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { Capacitor } from '@capacitor/core';
+import { Directory, Filesystem } from '@capacitor/filesystem';
 
 import type { Chapter } from '../connectors/connector.model';
 import { Connector } from '../connectors/connector.base';
+import { ConnectorRequestService } from '../connectors/connector-request.service';
 import { TaskManagerService } from '../tasks/task-manager.service';
 import { DownloadStore } from '../native/download-store';
-import {
-  NATIVE_DOWNLOADER,
-  type NativeDownloaderPort,
-} from '../native/native-downloader.port';
 
 /** A finished (or in-progress) chapter download, keyed by `providerId:chapterId`. */
 export interface ChapterDownload {
@@ -39,10 +37,16 @@ const CHAPTER_START_DELAY_MS = 1500;
 /**
  * Downloads a chapter's pages from a provider to on-device storage.
  *
- * On Android, pages are handed to the system `DownloadManager` (via the
- * native downloader port), so transfers continue when the app is backgrounded
- * or closed. On web it falls back to a session-only blob download so
- * `ionic serve` still works.
+ * Each page is fetched through the connector transport and written to the
+ * app-private `Directory.Data/emaki/<provider>/<chapter>/` folder via
+ * `@capacitor/filesystem`. (The system `DownloadManager` was originally used
+ * for this, but it refuses to write into `Android/data/<pkg>/` on modern
+ * Android — it can only write to public MediaStore locations — so downloads
+ * run inside the app instead. Consequence: transfers pause if the app is
+ * killed, unlike the system downloader.)
+ *
+ * On web it falls back to a session-only blob download so `ionic serve`
+ * still works.
  *
  * Progress is reported to `TaskManagerService` (queued → processing →
  * done/error) and downloaded chapters are recorded in `DownloadStore`, which
@@ -52,7 +56,7 @@ const CHAPTER_START_DELAY_MS = 1500;
 export class DownloadService {
   private readonly tasks = inject(TaskManagerService);
   private readonly store = inject(DownloadStore);
-  private readonly native = inject(NATIVE_DOWNLOADER);
+  private readonly requests = inject(ConnectorRequestService);
   private readonly isNative = Capacitor.isNativePlatform();
 
   private readonly _active = signal<ReadonlySet<string>>(new Set());
@@ -213,70 +217,33 @@ export class DownloadService {
     }
   }
 
-  /** Fire-and-forget each page into DownloadManager; files land on disk. */
+  /** Fetch each page and write it to app-private storage. */
   private async downloadNative(item: QueuedChapter, urls: readonly string[]): Promise<void> {
     const { provider, chapter } = item;
-    const done = new Set<number>();
-    const fail = new Set<number>();
-
-    const offProgress = this.native.onProgress((d) => {
-      const idx = pageIndex(d.id);
-      if (idx !== undefined) this.tasks.update(chapter.id, 'download', { done: done.size });
-    });
-    const offCompleted = this.native.onCompleted((d) => {
-      const idx = pageIndex(d.id);
-      if (idx !== undefined) {
-        done.add(idx);
-        this.tasks.update(chapter.id, 'download', { done: done.size });
-        if (done.size + fail.size === urls.length) {
-          offProgress();
-          offCompleted();
-          offFailed();
-        }
-      }
-    });
-    const offFailed = this.native.onFailed((d) => {
-      const idx = pageIndex(d.id);
-      if (idx !== undefined) {
-        fail.add(idx);
-        this.tasks.update(chapter.id, 'download', { done: done.size });
-        if (done.size + fail.size === urls.length) {
-          offProgress();
-          offCompleted();
-          offFailed();
-        }
-      }
-    });
+    const done: string[] = [];
 
     // Start pages one at a time with a small delay between them so the
     // provider doesn't rate-limit a burst of simultaneous downloads.
     for (let i = 0; i < urls.length; i++) {
       try {
-        await this.native.start({
-          id: pageTaskId(chapter.id, i),
-          url: urls[i],
-          destination: this.store.downloadDestination(provider.id, chapter.id, i),
+        const blob = await this.requests.fetchImage(urls[i]);
+        const fileName = `${String(i).padStart(3, '0')}${extensionFor(blob.type)}`;
+        await Filesystem.writeFile({
+          path: this.store.filePath(provider.id, chapter.id, fileName),
+          directory: Directory.Data,
+          data: await blobToBase64(blob),
+          recursive: true,
         });
+        done.push(fileName);
+        this.tasks.update(chapter.id, 'download', { done: done.length });
       } catch {
-        fail.add(i);
+        // Page failed — skip it; the chapter records only what landed.
       }
       if (i < urls.length - 1) await this.wait(PAGE_START_DELAY_MS);
     }
 
-    // If the listeners already finished (all events fired before we got here),
-    // tear them down now.
-    if (done.size + fail.size === urls.length) {
-      offProgress();
-      offCompleted();
-      offFailed();
-    }
-
-    // Record files for every page that actually landed (native reports via
-    // downloadCompleted; we can't verify file existence cheaply, so trust the
-    // completion events and assume the destination filename).
-    if (done.size > 0) {
-      const files = [...done].sort((a, b) => a - b).map((i) => `${String(i).padStart(3, '0')}.jpg`);
-      await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, files);
+    if (done.length > 0) {
+      await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, done);
     }
   }
 
@@ -332,16 +299,34 @@ export class DownloadService {
   }
 }
 
-function pageTaskId(chapterId: string, index: number): string {
-  return `${chapterId}:p${index}`;
-}
-
-function pageIndex(taskId: string): number | undefined {
-  const m = /:p(\d+)$/.exec(taskId);
-  return m ? Number(m[1]) : undefined;
-}
-
 function splitKey(key: string): [string, string] {
   const i = key.indexOf(':');
   return [key.slice(0, i), key.slice(i + 1)];
+}
+
+/** Map a blob's mime type to a filename extension for stored pages. */
+function extensionFor(type: string): string {
+  switch (type) {
+    case 'image/png':
+      return '.png';
+    case 'image/webp':
+      return '.webp';
+    case 'image/gif':
+      return '.gif';
+    case 'image/bmp':
+      return '.bmp';
+    default:
+      return '.jpg';
+  }
+}
+
+/** Convert a Blob to base64 for `Filesystem.writeFile` (native requires it). */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }

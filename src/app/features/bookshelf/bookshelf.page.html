@@ -83,20 +83,35 @@
     </ion-grid>
   }
 
-  <div class="float-actions">
-    <ion-button shape="round" (click)="displayOpen.set(true)">
-      <ion-icon slot="start" name="options"></ion-icon>
-      Display
-    </ion-button>
-    <ion-button shape="round" (click)="filtersOpen.set(true)">
-      <ion-icon slot="start" name="color-filter"></ion-icon>
-      Filters
-    </ion-button>
-    <ion-button shape="round" (click)="scan()" [disabled]="scanning()">
-      <ion-icon slot="start" name="scan"></ion-icon>
-      Scan
-    </ion-button>
-  </div>
+  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
+    <ion-fab-button (click)="fabOpen.set(!fabOpen())" aria-label="Library actions">
+      <ion-icon [name]="fabOpen() ? 'close' : 'ellipsis-horizontal'"></ion-icon>
+    </ion-fab-button>
+    <ion-fab-list side="top">
+      <ion-fab-button
+        title="Display"
+        (click)="displayOpen.set(true); fabOpen.set(false)"
+        aria-label="Display"
+      >
+        <ion-icon name="options"></ion-icon>
+      </ion-fab-button>
+      <ion-fab-button
+        title="Filters"
+        (click)="filtersOpen.set(true); fabOpen.set(false)"
+        aria-label="Filters"
+      >
+        <ion-icon name="color-filter"></ion-icon>
+      </ion-fab-button>
+      <ion-fab-button
+        title="Scan"
+        (click)="scan(); fabOpen.set(false)"
+        [disabled]="scanning()"
+        aria-label="Scan"
+      >
+        <ion-icon name="scan"></ion-icon>
+      </ion-fab-button>
+    </ion-fab-list>
+  </ion-fab>
 
   <ion-modal
     class="filters-sheet"

@@ -6,6 +6,9 @@ import {
   IonButtons,
   IonCol,
   IonContent,
+  IonFab,
+  IonFabButton,
+  IonFabList,
   IonGrid,
   IonHeader,
   IonIcon,
@@ -37,6 +40,9 @@ import { ShelfService } from '../../core/services/shelf.service';
     IonButtons,
     IonCol,
     IonContent,
+    IonFab,
+    IonFabButton,
+    IonFabList,
     IonGrid,
     IonHeader,
     IonIcon,
@@ -67,6 +73,8 @@ export class BookshelfPage {
   public readonly filtersOpen = signal(false);
   /** Display sheet (reading direction, layout, zoom, theme, …). */
   public readonly displayOpen = signal(false);
+  /** Whether the action FAB's list is expanded. */
+  public readonly fabOpen = signal(false);
 
   /** Ids of the folder chain from the root to the current folder. */
   public readonly currentPath = signal<readonly string[]>([]);

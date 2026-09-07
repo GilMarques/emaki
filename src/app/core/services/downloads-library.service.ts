@@ -96,7 +96,8 @@ export class DownloadsLibraryService {
 
   /** Resolve a chapter page file to a renderable image URL. */
   private pageUrl(d: ChapterDownload, index: number): string {
-    const path = this.store.pagePath(d.providerId, d.chapterId, index);
+    const fileName = d.files[index] ?? `${String(index).padStart(3, '0')}.jpg`;
+    const path = this.store.filePath(d.providerId, d.chapterId, fileName);
     if (!Capacitor.isNativePlatform()) return path;
     return Capacitor.convertFileSrc(path);
   }

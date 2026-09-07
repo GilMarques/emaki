@@ -47,9 +47,14 @@ export class DownloadStore {
     return `${BASE_DIR}/${providerId}/${chapterId}`;
   }
 
+  /** Absolute path for a named page file under the chapter dir. */
+  public filePath(providerId: string, chapterId: string, fileName: string): string {
+    return `${this.chapterDir(providerId, chapterId)}/${fileName}`;
+  }
+
   /** Absolute destination path for a page file under the chapter dir. */
   public pagePath(providerId: string, chapterId: string, index: number): string {
-    return `${this.chapterDir(providerId, chapterId)}/${String(index).padStart(3, '0')}.jpg`;
+    return this.filePath(providerId, chapterId, `${String(index).padStart(3, '0')}.jpg`);
   }
 
   /** Alias: the path handed to the native downloader for a page. */
