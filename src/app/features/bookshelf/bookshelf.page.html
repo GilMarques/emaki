@@ -69,16 +69,17 @@
               @if (showCover(child)) {
                 <div class="thumb">
                   <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
-                  <ion-icon
+                  <ion-button
                     class="enhance-btn"
                     [class.enhanced]="isEnhanced(child)"
-                    name="sparkles"
-                    role="button"
-                    tabindex="0"
+                    shape="round"
+                    fill="solid"
                     aria-label="Enhance"
                     (click)="$event.stopPropagation(); openEnhanceAlert(child)"
                     (keyup.enter)="$event.stopPropagation(); openEnhanceAlert(child)"
-                  ></ion-icon>
+                  >
+                    <ion-icon slot="icon-only" name="sparkles"></ion-icon>
+                  </ion-button>
                 </div>
               } @else if (coversFor(child).length > 0) {
                 <div class="cover-stack">
