@@ -3,11 +3,19 @@
     <ion-buttons slot="start">
       <ion-menu-button></ion-menu-button>
     </ion-buttons>
-    <ion-breadcrumbs class="crumbs" [maxItems]="4">
-      @for (c of crumbs(); track c.id; let i = $index) {
-        <ion-breadcrumb (click)="goToCrumb(i)">{{ c.name }}</ion-breadcrumb>
-      }
-    </ion-breadcrumbs>
+    <ion-title class="crumbs">
+      <span
+        class="title-text"
+        [class.clickable]="canGoUp()"
+        role="button"
+        tabindex="0"
+        (click)="canGoUp() && goUp()"
+        (keyup.enter)="canGoUp() && goUp()"
+        aria-label="Go up one folder"
+      >@if (canGoUp()) {
+        <ion-icon name="arrow-up-outline"></ion-icon>
+      }{{ titlePath() }}</span>
+    </ion-title>
     @if (showFiles()) {
       <ion-buttons slot="end">
         <ion-button
@@ -43,18 +51,6 @@
       <p>This folder has no subfolders or books.</p>
     </div>
   } @else {
-    <ion-button
-      class="up-bar"
-      shape="round"
-      fill="solid"
-      color="tertiary"
-      (click)="canGoUp() && goUp()"
-      aria-label="Go up one folder"
-    >
-      <ion-icon slot="start" name="arrow-up"></ion-icon>
-      Up
-    </ion-button>
-
     <ion-grid class="shelf">
       <ion-row>
         @for (child of children(); track child.id) {
@@ -89,6 +85,13 @@
                 </div>
               } @else {
                 <ion-icon class="folder" name="folder"></ion-icon>
+              }
+              @if (isEnhancing(child)) {
+                <ion-spinner
+                  class="enhancing-spinner"
+                  name="circular"
+                  aria-label="Enhancing"
+                ></ion-spinner>
               }
               @if (progressFor(child) !== null) {
                 <div

@@ -2,8 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router } from '@angular/router';
 import {
   IonAlert,
-  IonBreadcrumb,
-  IonBreadcrumbs,
   IonButton,
   IonButtons,
   IonCol,
@@ -43,8 +41,6 @@ import { ShelfService } from '../../core/services/shelf.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     IonAlert,
-    IonBreadcrumb,
-    IonBreadcrumbs,
     IonButton,
     IonButtons,
     IonCol,
@@ -203,6 +199,9 @@ export class BookshelfPage {
     return out;
   });
 
+  /** Header title: current folder path joined with "/", e.g. "Downloads/Hunter x Hunter". */
+  public readonly titlePath = computed(() => this.crumbs().map((c) => c.name).join('/'));
+
   /** Child folders of the current folder. */
   public readonly children = computed<readonly FsFolder[]>(
     () => this.currentFolder()?.children ?? [],
@@ -284,11 +283,6 @@ export class BookshelfPage {
     this.currentPath.update((p) => [...p, id]);
   }
 
-  /** Jump to a breadcrumb depth (0 = library root). */
-  public goToCrumb(depth: number): void {
-    this.currentPath.set(this.currentPath().slice(0, depth));
-  }
-
   /** True when the current folder has a parent (i.e. not at the library root). */
   public readonly canGoUp = computed(() => this.currentPath().length > 0);
 
@@ -341,6 +335,11 @@ export class BookshelfPage {
   /** True when a book has at least one enhanced derivative (badge on the tile). */
   public isEnhanced(folder: FsFolder): boolean {
     return this.enhance.hasEnhanced(folder.id);
+  }
+
+  /** True while a book's enhancement is still in progress (spinner on tile). */
+  public isEnhancing(folder: FsFolder): boolean {
+    return this.enhance.isEnhancing(folder.id);
   }
 
   /** True when the tile (a book, or any book inside a series) is enhanced. */

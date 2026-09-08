@@ -193,22 +193,39 @@ export class ScanEnhancementService {
     return { done, total, processing };
   }
 
-  /** True when a book has at least one completed enhanced derivative. Reads the
-   *  persisted record so it works even if the job isn't loaded in memory. */
+  /** True when every page of a book has a completed enhanced derivative. Reads
+   *  the persisted record so it works even if the job isn't loaded in memory.
+   *  Reacts to `revision` so the shelf badge updates live as pages complete. */
   public hasEnhanced(bookId: string): boolean {
+    this._revision();
     const job = this._jobs().get(bookId);
     if (job !== undefined) {
-      for (const s of job.state.values()) if (isComplete(s)) return true;
+      if (job.pages.length === 0) return false;
+      for (let i = 0; i < job.pages.length; i++) {
+        if (!isComplete(job.state.get(i))) return false;
+      }
+      return true;
     }
     if (typeof localStorage === 'undefined') return false;
     try {
       const raw = localStorage.getItem(STORAGE_PREFIX + bookId);
       if (raw === null) return false;
       const parsed = JSON.parse(raw) as { pages?: EnhancementPageState[] };
-      return (parsed.pages ?? []).some((s) => isComplete(s));
+      const pages = parsed.pages ?? [];
+      return pages.length > 0 && pages.every((s) => isComplete(s));
     } catch {
       return false;
     }
+  }
+
+  /** True while a book currently has enhancement work left to do (job enabled,
+   *  some pages pending/queued/processing). Reacts to `revision`. */
+  public isEnhancing(bookId: string): boolean {
+    this._revision();
+    const job = this._jobs().get(bookId);
+    if (job === undefined || !job.enabled) return false;
+    const p = this.progressForBook(bookId);
+    return p.total > 0 && p.done < p.total;
   }
 
   // ─────────────────────────────── Controls ───────────────────────────────

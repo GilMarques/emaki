@@ -30,8 +30,31 @@ ion-fab-button[title]::after {
 }
 
 .crumbs {
-  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
   min-width: 0;
+
+  .title-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    ion-icon {
+      flex: 0 0 auto;
+      font-size: 1rem;
+    }
+
+    &.clickable {
+      cursor: pointer;
+    }
+  }
 }
 
 /* Circular checkmark button replacing the sheet modals' "Done" text button. */
@@ -152,17 +175,8 @@ ion-fab-button[title]::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ion-color-step-50, #f3f3f3);
+  background: var(--ion-background-color, #f2efdf);
   border-radius: 6px;
-}
-
-.up-bar {
-  margin: 8px 12px 0;
-  width: 20%;
-  min-width: 96px;
-  --border-radius: 8px;
-  --background: var(--statusline1);
-  --color: #fff;
 }
 
 .tile-name {
@@ -184,6 +198,15 @@ ion-fab-button[title]::after {
 
 .tile {
   position: relative;
+}
+
+/* Circular spinner shown top-left while a book's enhancement is running. */
+.enhancing-spinner {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  color: var(--ion-color-primary, #3880ff);
 }
 
 /* Bottom-right sparkles action button over the thumbnail. Solid green;
