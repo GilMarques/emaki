@@ -98,11 +98,18 @@ export class ScanEnhancementService {
   private _fgActive = false;
   private persistScheduled = false;
 
+  /** Book ids whose derivatives are queued for garbage collection, keyed by
+   *  book id → derivative URIs still on disk. Files are only deleted once the
+   *  book is confirmed unused (not displayed, no active job, no live blob). */
+  private readonly _gcQueue = new Map<string, readonly string[]>();
+
   constructor() {
     // Track the open book so displayUrlFor always resolves against it.
     effect(() => {
       const book = this.bookstore.state().book;
       this._displayedBookId.set(book ? book.id : null);
+      // Closing the reader is a safe point to dispose queued derivatives.
+      this.gc();
     });
 
     // Persist on any state change (settings or any job map), debounced.
@@ -260,6 +267,86 @@ export class ScanEnhancementService {
     this._jobs.update((m) => new Map(m).set(bookId, { ...job }));
     this.syncTask(job);
     void this.syncForeground();
+  }
+
+  /** Remove a book's enhanced derivatives.
+   *
+   *  The persisted record and in-memory job are cleared immediately (the badge
+   *  flips, originals are served again), but the derivative FILES are only
+   *  garbage-collected once they are confirmed unused — the book is no longer
+   *  displayed and no derivative is loaded as a blob. Until then a re-enhance
+   *  is free, because pump() skips pages whose destination already exists.
+   */
+  public removeEnhancement(bookId: string): void {
+    const job = this._jobs().get(bookId);
+    const uris = this.collectDerivativeUris(bookId);
+    // Stop any in-flight work for this book.
+    if (this._activeSlot?.bookId === bookId) {
+      void this.cancelInFlight();
+      this._activeSlot = null;
+    }
+    if (job !== undefined) {
+      job.enabled = false;
+      this._jobs.update((m) => {
+        const next = new Map(m);
+        next.delete(bookId);
+        return next;
+      });
+    }
+    this.tasks.remove(bookId, 'upscale');
+    // Drop the persisted record so the tile shows unenhanced right away.
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_PREFIX + bookId);
+      } catch {
+        // ignore
+      }
+    }
+    if (uris.length > 0) {
+      this._gcQueue.set(bookId, uris);
+      this.gc();
+    }
+    this._revision.update((r) => r + 1);
+  }
+
+  /** Collect every on-disk derivative URI for a book (in-memory or persisted). */
+  private collectDerivativeUris(bookId: string): string[] {
+    const out = new Set<string>();
+    const job = this._jobs().get(bookId);
+    if (job !== undefined) {
+      for (const s of job.state.values()) {
+        if (isComplete(s) && s.enhancedUri) out.add(s.enhancedUri);
+      }
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(STORAGE_PREFIX + bookId);
+        if (raw !== null) {
+          const parsed = JSON.parse(raw) as { pages?: EnhancementPageState[] };
+          for (const s of parsed.pages ?? []) {
+            if (isComplete(s) && s.enhancedUri) out.add(s.enhancedUri);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return [...out];
+  }
+
+  /** Dispose queued derivatives once their books are confirmed unused. A book
+   *  counts as in-use while it is the open reader book, while it has an active
+   *  native job, or while any of its derivatives is cached as a live blob. */
+  private gc(): void {
+    for (const [bookId, uris] of [...this._gcQueue]) {
+      if (bookId === this._displayedBookId()) continue;
+      if (this._activeSlot?.bookId === bookId) continue;
+      if (uris.some((u) => this.filePages.isLoaded(u))) continue;
+      this._gcQueue.delete(bookId);
+      void Promise.all(uris.map((u) => this.assets.delete(u))).then(() => {
+        this._revision.update((r) => r + 1);
+      });
+    }
   }
 
   /** Enhance a book in the BACKGROUND (does not open it, does not affect the
@@ -501,6 +588,22 @@ export class ScanEnhancementService {
     };
     const cacheKey = cacheKeyString(key);
     const destinationUri = this.assets.buildDestinationUri(key, page.url);
+
+    // Cache hit: the derivative already exists on disk (e.g. it survived a
+    // removeEnhancement that hasn't been garbage-collected yet, or a previous
+    // run produced it). Mark complete without any native work.
+    if (await this.assets.exists(destinationUri)) {
+      this.setJobStatus(job, target.index, 'complete', {
+        enhancedUri: destinationUri,
+        cacheKey,
+        sourceHash,
+        error: null,
+      });
+      this._revision.update((r) => r + 1);
+      void this.pump();
+      return;
+    }
+
     const jobId = `job-${++job.jobCounter}`;
 
     job.currentJob = { jobId, index: target.index, cacheKey };

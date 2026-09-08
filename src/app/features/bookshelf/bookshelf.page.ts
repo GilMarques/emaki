@@ -108,13 +108,18 @@ export class BookshelfPage {
   public readonly alertHeader = computed(() => {
     const f = this.alertFor();
     if (f === null) return '';
-    return this.isBookFolder(f) ? 'Enhance scans?' : 'Enhance series?';
+    return this.alertIsRemove() ? 'Remove enhancement?' : this.isBookFolder(f) ? 'Enhance scans?' : 'Enhance series?';
   });
 
   /** Alert body text, including the book count for a series and a space estimate. */
   public readonly alertMessage = computed(() => {
     const f = this.alertFor();
     if (f === null) return '';
+    if (this.alertIsRemove()) {
+      return this.isBookFolder(f)
+        ? 'The enhanced scans will be removed. Files are kept until they are no longer in use, so re-enhancing later is free.'
+        : 'All enhanced scans in this series will be removed. Files are kept until they are no longer in use, so re-enhancing later is free.';
+    }
     let base: string;
     if (this.isBookFolder(f)) {
       base = 'This book will be enhanced in the background.';
@@ -130,11 +135,24 @@ export class BookshelfPage {
   /** Whether the space estimate is still being computed. */
   public readonly alertEstimating = signal(false);
 
-  /** Alert buttons (Cancel / Enhance). */
-  public readonly alertButtons = computed(() => [
-    { text: 'Cancel', role: 'cancel' },
-    { text: 'Enhance', role: 'enhance' },
-  ]);
+  /** True when the open alert is a removal (tile already enhanced) vs enhance. */
+  public readonly alertIsRemove = computed(() => {
+    const f = this.alertFor();
+    return f !== null && this.hasEnhancedIn(f);
+  });
+
+  /** Alert buttons (Cancel / Enhance, or Cancel / Remove). */
+  public readonly alertButtons = computed(() =>
+    this.alertIsRemove()
+      ? [
+          { text: 'Cancel', role: 'cancel' },
+          { text: 'Remove', role: 'remove' },
+        ]
+      : [
+          { text: 'Cancel', role: 'cancel' },
+          { text: 'Enhance', role: 'enhance' },
+        ],
+  );
 
   /** Confirmation toast message, or null when hidden. */
   public readonly toastMessage = signal<string | null>(null);
@@ -325,9 +343,16 @@ export class BookshelfPage {
     return this.enhance.hasEnhanced(folder.id);
   }
 
-  /** Open the enhance confirmation alert for a tile (book or series). */
+  /** True when the tile (a book, or any book inside a series) is enhanced. */
+  private hasEnhancedIn(folder: FsFolder): boolean {
+    if (folder.isBook) return this.isEnhanced(folder);
+    return this.collectBooks(folder).some((b) => this.enhance.hasEnhanced(b.id));
+  }
+
+  /** Open the enhance (or removal) confirmation alert for a tile. */
   public openEnhanceAlert(child: FsFolder): void {
     this.alertFor.set(child);
+    if (this.hasEnhancedIn(child)) return; // removal alert needs no size estimate
     void this.predictAlertSize(child);
   }
 
@@ -358,15 +383,32 @@ export class BookshelfPage {
     this.alertEstimating.set(false);
   }
 
-  /** Alert dismissed: run enhancement if the user confirmed. */
+  /** Alert dismissed: run enhancement (or removal) if the user confirmed. */
   public onAlertDismiss(role: string | undefined): void {
     const folder = this.alertFor();
     this.alertFor.set(null);
-    if (folder === null || role !== 'enhance') return;
+    if (folder === null) return;
+    if (role === 'remove') {
+      this.removeEnhancementTile(folder);
+      return;
+    }
+    if (role !== 'enhance') return;
     if (this.isBookFolder(folder)) {
       void this.enhanceBookTile(folder);
     } else {
       void this.enhanceSeriesTile(folder);
+    }
+  }
+
+  /** Remove enhancements from a single book, or from every book in a series. */
+  private removeEnhancementTile(folder: FsFolder): void {
+    if (folder.isBook) {
+      this.enhance.removeEnhancement(folder.id);
+      return;
+    }
+    const books = this.collectBooks(folder);
+    for (const book of books) {
+      if (this.enhance.hasEnhanced(book.id)) this.enhance.removeEnhancement(book.id);
     }
   }
 

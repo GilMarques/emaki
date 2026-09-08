@@ -48,6 +48,11 @@ export class FilePageService {
     return url;
   }
 
+  /** True while `fsPath` has a live blob URL cached (i.e. is in use). */
+  public isLoaded(fsPath: string): boolean {
+    return this.blobCache.has(fsPath);
+  }
+
   /** Warm the cache for a whole book (all pages). */
   public async preload(book: Book): Promise<void> {
     if (book.source.type !== 'folder') return;
