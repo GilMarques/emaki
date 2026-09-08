@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import {
   IonAlert,
   IonBreadcrumb,
@@ -20,6 +21,7 @@ import {
   IonSpinner,
   IonText,
   IonTitle,
+  IonToast,
   IonToolbar,
 } from '@ionic/angular/standalone';
 
@@ -60,6 +62,7 @@ import { ShelfService } from '../../core/services/shelf.service';
     IonSpinner,
     IonText,
     IonTitle,
+    IonToast,
     IonToolbar,
     DisplaySettingsComponent,
     FiltersSettingsComponent,
@@ -68,6 +71,7 @@ import { ShelfService } from '../../core/services/shelf.service';
   styleUrls: ['./bookshelf.page.scss'],
 })
 export class BookshelfPage {
+  private readonly router = inject(Router);
   private readonly scanner = inject(ScannerService);
   private readonly bookshelf = inject(BookstoreService);
   private readonly shelf = inject(ShelfService);
@@ -119,13 +123,32 @@ export class BookshelfPage {
       base = `${n} book${n === 1 ? '' : 's'} in this series will be enhanced in the background.`;
     }
     const size = this.alertSize();
-    return size === null ? base : `${base}\nEstimated space: ~${size}`;
+    if (size === null) return this.alertEstimating() ? `${base}\nEstimating space…` : base;
+    return `${base}\nEstimated space: ~${size}`;
   });
+
+  /** Whether the space estimate is still being computed. */
+  public readonly alertEstimating = signal(false);
 
   /** Alert buttons (Cancel / Enhance). */
   public readonly alertButtons = computed(() => [
     { text: 'Cancel', role: 'cancel' },
     { text: 'Enhance', role: 'enhance' },
+  ]);
+
+  /** Confirmation toast message, or null when hidden. */
+  public readonly toastMessage = signal<string | null>(null);
+
+  /** Toast "View" button — navigates to the manager and dismisses. */
+  public readonly toastButtons = computed(() => [
+    {
+      text: 'View',
+      side: 'end',
+      handler: () => {
+        void this.router.navigate(['/manager']);
+        return true; // dismiss the toast
+      },
+    },
   ]);
 
   private isBookFolder(f: FsFolder): boolean {
@@ -315,18 +338,24 @@ export class BookshelfPage {
    * omitted when page sizes can't be stat'ed (e.g. preset books).
    */
   private async predictAlertSize(folder: FsFolder): Promise<void> {
+    this.alertEstimating.set(true);
     const scale = this.enhance.settings().scale;
     const books = this.isBookFolder(folder)
       ? (this.shelf.byId(folder.id) === undefined ? [] : [this.shelf.byId(folder.id)!])
       : this.collectBooks(folder);
-    let bytes = 0;
+    const stats: Promise<number | null>[] = [];
     for (const book of books) {
       for (const page of book.pages) {
-        const size = await this.fs.stat(page.url).catch(() => null);
-        if (size !== null && size > 0) bytes += size;
+        stats.push(this.fs.stat(page.url).catch(() => null));
       }
     }
+    const sizes = await Promise.all(stats);
+    let bytes = 0;
+    for (const size of sizes) {
+      if (size !== null && size > 0) bytes += size;
+    }
     this.alertSize.set(bytes <= 0 ? null : formatBytes(bytes * scale * scale));
+    this.alertEstimating.set(false);
   }
 
   /** Alert dismissed: run enhancement if the user confirmed. */
@@ -346,6 +375,7 @@ export class BookshelfPage {
     const book = this.shelf.byId(child.id);
     if (book === undefined) return;
     await this.enhance.enhanceBook(book);
+    this.toastMessage.set(`Enhancing "${book.title}"`);
   }
 
   /** Background-enhance every book inside a series folder, without opening any. */
@@ -353,6 +383,7 @@ export class BookshelfPage {
     const books = this.collectBooks(folder);
     if (books.length === 0) return;
     await this.enhance.enhanceSeries(books);
+    this.toastMessage.set(`Enhancing ${books.length} book${books.length === 1 ? '' : 's'}`);
   }
 
   /** Recursively gather every scanned book folder under `node`. */

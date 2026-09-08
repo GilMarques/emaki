@@ -20,7 +20,6 @@ import {
 import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { ViewerPage } from './features/viewer/viewer.page';
-import { EnhancementProgressComponent } from './shared/enhancement-progress.component';
 
 @Component({
   selector: 'app-root',
@@ -44,7 +43,6 @@ imports: [
     IonTitle,
     IonToolbar,
     ViewerPage,
-    EnhancementProgressComponent,
   ],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],

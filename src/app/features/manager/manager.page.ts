@@ -18,11 +18,13 @@ import {
 
 import { TaskManagerService } from '../../core/tasks/task-manager.service';
 import { DownloadService } from '../../core/services/download.service';
+import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
+import type { TaskProgress } from '../../core/tasks/task-manager.model';
 
 /**
- * Manager page — lists every background task (upscaling, downloads) with its
- * status. Reads from TaskManagerService, which both the enhancement engine
- * and the download service report into.
+ * Manager page — lists every background task (upscaling, downloads) mixed
+ * together with its status. Reads from TaskManagerService, which both the
+ * enhancement engine and the download service report into.
  */
 @Component({
   selector: 'ov-manager',
@@ -50,13 +52,19 @@ import { DownloadService } from '../../core/services/download.service';
 export class ManagerPage {
   private readonly tasks = inject(TaskManagerService);
   private readonly downloads = inject(DownloadService);
+  private readonly enhance = inject(ScanEnhancementService);
 
   public readonly all = this.tasks.tasks;
 
   public readonly hasTasks = computed(() => this.tasks.tasks().length > 0);
 
-  /** Delete a finished chapter download (removes files + task). */
-  public remove(chapterId: string): void {
-    void this.downloads.removeByChapterId(chapterId);
+  /** Remove a finished task: delete a download's files, or clear an upscale entry. */
+  public remove(task: TaskProgress): void {
+    if (task.kind === 'download') {
+      void this.downloads.removeByChapterId(task.id);
+    } else {
+      void this.enhance.stopBook(task.id);
+      this.tasks.remove(task.id, 'upscale');
+    }
   }
 }

@@ -48,13 +48,13 @@
               }
             }
           </ion-note>
-          @if (task.kind === 'download' && task.status === 'done') {
+          @if (task.status === 'done') {
             <ion-button
               slot="end"
               fill="clear"
               color="medium"
-              (click)="remove(task.id)"
-              aria-label="Delete download"
+              (click)="remove(task)"
+              aria-label="Remove task"
             >
               <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
             </ion-button>

@@ -182,34 +182,35 @@ ion-fab-button[title]::after {
   width: 100%;
 }
 
-/* Small "already enhanced" indicator overlaid on the thumbnail's top-right. */
-.enhanced-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  font-size: 18px;
-  color: #fff;
-  background: var(--ion-color-primary, #3880ff);
-  border-radius: 50%;
-  padding: 3px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
-}
-
 .tile {
   position: relative;
 }
 
-/* Bottom-right sparkles icon over the thumbnail. Filled by default; colored
-   (primary) when the book is already enhanced. */
+/* Bottom-right sparkles action button over the thumbnail. Solid green;
+   dimmed when the book is not yet enhanced, full opacity when it is. */
 .enhance-btn {
   position: absolute;
   right: 6px;
   bottom: 6px;
   z-index: 2;
-  font-size: 22px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
   cursor: pointer;
+  color: #000;
+  background: var(--bg-green, #e5e6c5);
+  opacity: 0.5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+
+  &.enhanced {
+    color: #fff;
+    background: var(--green, #8da101);
+    opacity: 1;
+  }
 }
 
 .ctx-item {

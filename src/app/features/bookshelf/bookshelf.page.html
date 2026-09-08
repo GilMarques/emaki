@@ -69,16 +69,13 @@
               @if (showCover(child)) {
                 <div class="thumb">
                   <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
-                  @if (isEnhanced(child)) {
-                    <ion-icon class="enhanced-badge" name="sparkles" aria-label="Enhanced"></ion-icon>
-                  }
                   <ion-icon
                     class="enhance-btn"
+                    [class.enhanced]="isEnhanced(child)"
                     name="sparkles"
                     role="button"
                     tabindex="0"
                     aria-label="Enhance"
-                    [color]="isEnhanced(child) ? 'primary' : 'medium'"
                     (click)="$event.stopPropagation(); openEnhanceAlert(child)"
                     (keyup.enter)="$event.stopPropagation(); openEnhanceAlert(child)"
                   ></ion-icon>
@@ -213,4 +210,15 @@
       </ion-content>
     </ng-template>
   </ion-modal>
+
+  <ion-toast
+    [isOpen]="toastMessage() !== null"
+    [message]="toastMessage() ?? ''"
+    [buttons]="toastButtons()"
+    [duration]="5000"
+    swipeGesture="vertical"
+    position="bottom"
+    color="light"
+    (ionToastDidDismiss)="toastMessage.set(null)"
+  ></ion-toast>
 </ion-content>

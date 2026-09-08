@@ -5,6 +5,8 @@ import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
 import { PageAssetService, cacheKeyString, sourceHashFor } from './page-asset.service';
 import { RealEsrganPluginService } from '../native/real-esrgan.plugin';
+import { TaskManagerService } from '../tasks/task-manager.service';
+import type { TaskStatus } from '../tasks/task-manager.model';
 import {
   DEFAULT_ENHANCEMENT_SETTINGS,
   isComplete,
@@ -21,6 +23,8 @@ const TILE_SIZE = 0; // 0 = native auto
 
 interface InternalJob {
   readonly bookId: string;
+  /** Human title for the Manager task list. */
+  title: string;
   pages: readonly Page[];
   state: Map<number, EnhancementPageState>;
   enabled: boolean;
@@ -58,6 +62,7 @@ export class ScanEnhancementService {
   private readonly plugin = inject(RealEsrganPluginService);
   private readonly assets = inject(PageAssetService);
   private readonly filePages = inject(FilePageService);
+  private readonly tasks = inject(TaskManagerService);
 
   private readonly _capabilities = signal<EnhancementCapabilities>({
     available: false,
@@ -181,21 +186,6 @@ export class ScanEnhancementService {
     return { done, total, processing };
   }
 
-  /** Books currently being enhanced (enabled, not yet fully complete). Drives the
-   *  bottom-right progress tray; empties once every page is enhanced. */
-  public readonly activeJobs = computed<{ bookId: string; done: number; total: number; processing: number }[]>(
-    () => {
-      const out: { bookId: string; done: number; total: number; processing: number }[] = [];
-      for (const [bookId, job] of this._jobs()) {
-        if (!job.enabled) continue;
-        const p = this.progressForBook(bookId);
-        if (p.total === 0 || p.done >= p.total) continue; // nothing left → hide
-        out.push({ bookId, ...p });
-      }
-      return out;
-    },
-  );
-
   /** True when a book has at least one completed enhanced derivative. Reads the
    *  persisted record so it works even if the job isn't loaded in memory. */
   public hasEnhanced(bookId: string): boolean {
@@ -231,6 +221,7 @@ export class ScanEnhancementService {
     this._displayedBookId.set(book.id);
     job.state = this.loadPersisted(book.id, job.pages, job.settings) ?? this.seedPending(book.id, job.pages, job.settings);
     this._jobs.update((m) => new Map(m).set(book.id, job));
+    this.syncTask(job);
     void this.pump();
   }
 
@@ -244,6 +235,7 @@ export class ScanEnhancementService {
       if (this._activeSlot?.bookId === id) await this.cancelInFlight();
       this.demoteIncomplete(job);
       this._jobs.update((m) => new Map(m).set(id, { ...job }));
+      this.syncTask(job);
     }
     this._paused.set(false);
     await this.syncForeground();
@@ -266,6 +258,7 @@ export class ScanEnhancementService {
     if (this._activeSlot?.bookId === bookId) await this.cancelInFlight();
     this.demoteIncomplete(job);
     this._jobs.update((m) => new Map(m).set(bookId, { ...job }));
+    this.syncTask(job);
     void this.syncForeground();
   }
 
@@ -281,6 +274,7 @@ export class ScanEnhancementService {
     job.enabled = true;
     job.state = this.loadPersisted(book.id, job.pages, job.settings) ?? this.seedPending(book.id, job.pages, job.settings);
     this._jobs.update((m) => new Map(m).set(book.id, job));
+    this.syncTask(job);
     void this.pump();
   }
 
@@ -296,6 +290,7 @@ export class ScanEnhancementService {
       job.enabled = true;
       job.state = this.loadPersisted(book.id, job.pages, job.settings) ?? this.seedPending(book.id, job.pages, job.settings);
       this._jobs.update((m) => new Map(m).set(book.id, job));
+      this.syncTask(job);
     }
     void this.pump();
   }
@@ -622,10 +617,12 @@ export class ScanEnhancementService {
     const existing = this._jobs().get(book.id);
     if (existing) {
       existing.pages = book.pages;
+      existing.title = book.title;
       return existing;
     }
     const job: InternalJob = {
       bookId: book.id,
+      title: book.title,
       pages: book.pages,
       state: new Map(),
       enabled: false,
@@ -656,6 +653,7 @@ export class ScanEnhancementService {
     next.set(index, { ...base, ...patch, index, status });
     job.state = next;
     this._jobs.update((m) => new Map(m).set(job.bookId, { ...job }));
+    this.syncTask(job);
   }
 
   private updateJobState(
@@ -666,6 +664,24 @@ export class ScanEnhancementService {
     if (job === undefined) return;
     job.state = fn(new Map(job.state));
     this._jobs.update((m) => new Map(m).set(bookId, { ...job }));
+    this.syncTask(job);
+  }
+
+  /** Mirror this job's progress into the shared TaskManager (upscale list). */
+  private syncTask(job: InternalJob): void {
+    const { done, total, processing } = this.progressForBook(job.bookId);
+    const id = job.bookId;
+    if (!job.enabled) {
+      this.tasks.remove(id, 'upscale');
+      return;
+    }
+    if (this.tasks.task(id, 'upscale') === undefined) {
+      this.tasks.register({ id, kind: 'upscale', title: job.title, total });
+    }
+    let status: TaskStatus = 'queued';
+    if (processing > 0) status = 'processing';
+    else if (total > 0 && done >= total) status = 'done';
+    this.tasks.update(id, 'upscale', { done, total, status });
   }
 
   // ─────────────────────────────── Persistence ───────────────────────────────
