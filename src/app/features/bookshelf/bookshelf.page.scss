@@ -1,5 +1,11 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
+}
+
+ion-fab {
+  margin-right: 8px;
+  margin-bottom: 8px;
 }
 
 /* Text label shown to the left of each action FAB button (from title attr). */

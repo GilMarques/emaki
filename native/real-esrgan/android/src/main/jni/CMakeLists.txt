@@ -5,10 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── ncnn (prebuilt Vulkan shared lib, vendored from ncnn releases) ──
-# ncnn packages per-ABI since ~2024: <abi>/lib/libncnn.so + <abi>/include/ncnn.
+# Android packages jniLibs flat at <abi>/libncnn.so, so the vendored
+# <abi>/lib/libncnn.so from the ncnn release is flattened to that path.
 # The app only builds arm64-v8a (see build.gradle), so ANDROID_ABI selects it.
 set(NCNN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
-set(NCNN_LIB ${NCNN_DIR}/lib/libncnn.so)
+set(NCNN_LIB ${NCNN_DIR}/libncnn.so)
 set(NCNN_INCLUDE_DIRS ${NCNN_DIR}/include/ncnn)
 
 # ── system libs (image I/O is stb, header-only — no OpenCV/libwebp needed) ──

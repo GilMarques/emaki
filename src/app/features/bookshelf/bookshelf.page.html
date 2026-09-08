@@ -9,16 +9,18 @@
       }
     </ion-breadcrumbs>
     @if (showFiles()) {
-      <ion-button
-        class="open-btn"
-        shape="round"
-        size="small"
-        (click)="openFolder()"
-        aria-label="Select a folder from disk"
-      >
-        <ion-icon slot="start" name="folder-open-outline"></ion-icon>
-        Select
-      </ion-button>
+      <ion-buttons slot="end">
+        <ion-button
+          class="open-btn"
+          shape="round"
+          size="small"
+          (click)="openFolder()"
+          aria-label="Select a folder from disk"
+        >
+          <ion-icon slot="start" name="folder-open-outline"></ion-icon>
+          Select
+        </ion-button>
+      </ion-buttons>
     }
   </ion-toolbar>
 </ion-header>
