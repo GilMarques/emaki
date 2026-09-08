@@ -4,8 +4,10 @@ import {
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ViewDidEnter } from '@ionic/angular';
 import {
   IonBackButton,
   IonButtons,
@@ -66,10 +68,17 @@ import { ProviderBrowseService } from '../../../core/connectors/provider-browse.
   templateUrl: './browse.page.html',
   styleUrls: ['./browse.page.scss'],
 })
-export class ProviderBrowsePage {
+export class ProviderBrowsePage implements ViewDidEnter {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly browse = inject(ProviderBrowseService);
+
+  private readonly searchbar = viewChild.required(IonSearchbar);
+
+  /** Focus the search input each time the page is entered. */
+  public ionViewDidEnter(): void {
+    void this.searchbar()?.setFocus();
+  }
 
   /** Provider being browsed, resolved from the route id. */
   public readonly provider = computed(() => this.browse.provider());
