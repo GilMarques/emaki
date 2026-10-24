@@ -329,7 +329,10 @@ export class ScanEnhancementService {
       }
     }
     if (uris.length > 0) {
-      this._gcQueue.set(bookId, uris);
+      // Merge, don't replace: derivatives superseded by a re-enhancement are
+      // queued too, and they are just as dead as the ones still in the job.
+      const queued = this._gcQueue.get(bookId) ?? [];
+      this._gcQueue.set(bookId, [...new Set([...queued, ...uris])]);
       this.gc();
     }
     this._revision.update((r) => r + 1);
