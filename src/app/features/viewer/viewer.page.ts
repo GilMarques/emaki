@@ -526,22 +526,30 @@ export class ViewerPage {
     if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
 
-    const oldZoom = this.bookstore.zoom();
+    const stage = this.stageRef()?.nativeElement;
+    if (stage === undefined) return;
+    const rect = stage.getBoundingClientRect();
     const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    this.applyZoomAround(this.bookstore.zoom() * factor, event.clientX - rect.left, event.clientY - rect.top);
+  }
+
+  /**
+   * Zoom to an absolute factor around a stage-anchored point (CSS px, origin
+   * at the stage's top-left). The page point under the anchor stays put while
+   * the page scales, then the pan offset is clamped to the new page bounds.
+   */
+  private applyZoomAround(target: number, anchorX: number, anchorY: number): void {
+    const oldZoom = this.bookstore.zoom();
+    if (oldZoom <= 0) return;
+    const factor = target / oldZoom;
+    if (!Number.isFinite(factor) || factor <= 0) return;
     this.bookstore.setZoom(factor);
     const newZoom = this.bookstore.zoom();
     if (newZoom === oldZoom) return; // already at a bound
 
-    // Anchor the zoom on the point under the cursor: keep the same stage
-    // position fixed while the page scales (origin 0 0, translate + scale).
-    const stage = this.stageRef()?.nativeElement;
-    if (stage === undefined) return;
-    const rect = stage.getBoundingClientRect();
-    const px = event.clientX - rect.left;
-    const py = event.clientY - rect.top;
     const k = newZoom / oldZoom;
-    const nx = px - (px - this.panOffsetX()) * k;
-    const ny = py - (py - this.panOffsetY()) * k;
+    const nx = anchorX - (anchorX - this.panOffsetX()) * k;
+    const ny = anchorY - (anchorY - this.panOffsetY()) * k;
     const { minX, maxX, minY, maxY } = this.panExtents();
     this.panOffsetX.set(clamp(nx, minX, maxX));
     this.panOffsetY.set(clamp(ny, minY, maxY));
@@ -573,6 +581,18 @@ export class ViewerPage {
   private panBaseX = 0;
   private panBaseY = 0;
   private gestureAxis: GestureAxis | null = null;
+  /** Stage pointers currently down — two of them mean a pinch. */
+  private readonly pointers = new Map<number, { x: number; y: number }>();
+  /** Pinch baseline: finger distance and zoom when the second finger landed. */
+  private pinch: {
+    distance: number;
+    zoom: number;
+    anchorX: number;
+    anchorY: number;
+  } | null = null;
+  /** True from the first pinch until every finger is up, so the leftover
+   *  finger can't end up tapping, curling or loupe-ing. */
+  private pinchConsumed = false;
   /** Recent pointer samples during a pan — used to derive release velocity. */
   private panSamples: Array<{ x: number; y: number; t: number }> = [];
   private momentumAxis: GestureAxis | null = null;
@@ -593,6 +613,14 @@ export class ViewerPage {
     if (this.flip.turning()) return;
     // Ignore input while a book-boundary slide is running.
     if (this._transitioning()) return;
+
+    // A second finger means a pinch, not a second single-pointer gesture.
+    const alreadyDown = this.pointers.size;
+    this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (alreadyDown >= 1) {
+      this.beginPinch();
+      return;
+    }
 
     this.stopMomentum();
     this.magnifierState.setHolding(true);
@@ -620,6 +648,13 @@ export class ViewerPage {
   }
 
   public onStagePointerMove(event: PointerEvent): void {
+    if (this.pinch !== null) {
+      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      this.updatePinch();
+      return;
+    }
+    if (this.pinchConsumed) return; // leftover finger of a finished pinch
+
     const dx = event.clientX - this.holdStartX;
     const dy = event.clientY - this.holdStartY;
 
@@ -672,6 +707,18 @@ export class ViewerPage {
   }
 
   public onStagePointerUp(event: PointerEvent): void {
+    this.pointers.delete(event.pointerId);
+    if (this.pinch !== null || this.pinchConsumed) {
+      // The pinch owns this gesture: keep the zoom it reached and let the
+      // leftover finger do nothing (no tap, no curl, no loupe).
+      this.pinch = null;
+      this.clearHoldTimer();
+      this.gestureAxis = null;
+      this.magnifierState.endGesture();
+      if (this.pointers.size === 0) this.pinchConsumed = false;
+      return;
+    }
+
     const wasPan = this.magnifierState.relayPan();
     const axis = this.gestureAxis;
 
@@ -729,9 +776,52 @@ export class ViewerPage {
     }
   }
 
+  /**
+   * Switch to a two-finger pinch: cancel the hold/loupe and any curl in
+   * flight, then record the baseline (finger distance + current zoom).
+   */
+  private beginPinch(): void {
+    this.clearHoldTimer();
+    if (this.magnifierState.relayFlip()) {
+      // End the in-flight fold so the pinch isn't fighting the curl.
+      const first = [...this.pointers.values()][0];
+      if (first !== undefined) {
+        this.flip.relayPointerUp(this.clampToPageX(first.x), first.y);
+      }
+    }
+    this.magnifierState.endGesture();
+    this.swipeTurn = false;
+    this.gestureAxis = null;
+    this.pinchConsumed = true;
+
+    const points = [...this.pointers.values()];
+    if (points.length < 2) return;
+    const [a, b] = points;
+    const rect = this.stageRef()?.nativeElement.getBoundingClientRect();
+    this.pinch = {
+      distance: Math.hypot(a.x - b.x, a.y - b.y),
+      zoom: this.bookstore.zoom(),
+      // Anchor the zoom on the midpoint between the fingers, in stage px.
+      anchorX: (a.x + b.x) / 2 - (rect?.left ?? 0),
+      anchorY: (a.y + b.y) / 2 - (rect?.top ?? 0),
+    };
+  }
+
+  /** Map the current finger distance onto the zoom, anchored where the pinch
+   *  started, so the page scales under the fingers instead of drifting. */
+  private updatePinch(): void {
+    const pinch = this.pinch;
+    if (pinch === null) return;
+    const points = [...this.pointers.values()];
+    if (points.length < 2) return;
+    const [a, b] = points;
+    const distance = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch.distance <= 0 || distance <= 0) return;
+    this.applyZoomAround(pinch.zoom * (distance / pinch.distance), pinch.anchorX, pinch.anchorY);
+  }
+
   /** True when pointer release is still within the hold slop (no pan / drag). */
-  private isQuickTap(event: PointerEvent): boolean {
-    const dx = event.clientX - this.holdStartX;
+  private isQuickTap(event: PointerEvent): boolean {    const dx = event.clientX - this.holdStartX;
     const dy = event.clientY - this.holdStartY;
     return (
       dx * dx + dy * dy <=

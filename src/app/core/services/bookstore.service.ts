@@ -119,8 +119,8 @@ export class BookstoreService {
   }
 
   /** Zoom factor applied to the rendered page quad. 1 = fit-screen.
-   *  Reset on book open. v1 only: desktop scroll-wheel zoom (Ctrl/Cmd+wheel
-   *  or trackpad pinch). */
+   *  Reset on book open. Driven by the viewer's two-finger pinch and by
+   *  Ctrl/Cmd+wheel (scroll wheel or trackpad pinch). */
   private readonly _zoom = signal(1);
   public readonly zoom = this._zoom.asReadonly();
 
