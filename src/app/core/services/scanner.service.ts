@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import type { Book } from '../models/book.model';
 import { LIBRARY_SCANNER } from '../native/library-scanner.port';
@@ -61,14 +61,14 @@ export class ScannerService {
           if (folder.isBook) {
             keep.add(folder.id);
             const d = this.downloadsLibrary.downloadForBook(folder.id);
-            if (d) this.shelf.addOrUpdate(this.downloadsLibrary.bookFor(d));
+            if (d) untracked(() => this.shelf.addOrUpdate(this.downloadsLibrary.bookFor(d)));
           }
           folder.children.forEach(walk);
         };
         root.children.forEach(walk);
       }
       for (const id of this._downloadBookIds) {
-        if (!keep.has(id)) this.shelf.remove(id);
+        if (!keep.has(id)) untracked(() => this.shelf.remove(id));
       }
       this._downloadBookIds.clear();
       for (const id of keep) this._downloadBookIds.add(id);
