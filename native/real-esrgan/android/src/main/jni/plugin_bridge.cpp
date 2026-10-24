@@ -20,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <chrono>
 #include <android/log.h>
@@ -80,11 +81,59 @@ static bool resolveModelPaths(const std::string& modelDir, const std::string& mo
     return true;
 }
 
+// Tile size in source pixels. `realsr.cpp` submits and waits after EVERY tile
+// when there is more than one tile per row, so a small tile turns a page into
+// thousands of GPU round-trips: measured on a Dimensity 900 / Mali-G68, 32 px
+// took 40 s per 1200x1800 page where 256 px took 12.6 s. Upstream's own default
+// is "whole image", which is too much VRAM on a phone, so 0 means 256 here.
+// Large tiles also remove the block seams that 32 px tiling leaves behind.
+static const int kDefaultTileSize = 256;
+static const int kMinTileSize = 32;
+static const int kMaxTileSize = 512;  // 512 at 64ch fp16 ≈ 33 MB per GPU blob
+
+static int resolveTileSize(int requested) {
+    if (requested <= 0) return kDefaultTileSize;
+    if (requested < kMinTileSize) return kMinTileSize;
+    if (requested > kMaxTileSize) return kMaxTileSize;
+    return requested;
+}
+
+// One engine for the whole process. Constructing RealSR compiles the Vulkan
+// pre/post pipelines and net.load() reads + uploads the weights — about 0.85 s
+// per page, every page, if rebuilt. Pages are processed one at a time, so keep
+// the instance alive and rebuild only when the model or GPU changes. The mutex
+// doubles as the GPU lock: a second concurrent enhancePage call waits.
+static std::mutex g_engineMutex;
+static std::unique_ptr<RealSR> g_engine;
+static std::string g_engineKey;
+
+static RealSR* acquireEngine(const std::string& param, const std::string& bin,
+                             int gpuid, int threads) {
+    const std::string key = param + "|" + std::to_string(gpuid);
+    if (g_engine && g_engineKey == key) {
+        LOGI("engine reused (cached)");
+        return g_engine.get();
+    }
+    g_engine.reset();
+    g_engineKey.clear();
+
+    const double t0 = nowMs();
+    std::unique_ptr<RealSR> engine(new RealSR(gpuid, false /*tta*/, threads));
+    if (engine->load(param.c_str(), bin.c_str()) != 0) {
+        LOGE("model load FAILED: %s", param.c_str());
+        return nullptr;
+    }
+    LOGI("engine loaded in %.0fms", nowMs() - t0);
+    g_engine = std::move(engine);
+    g_engineKey = key;
+    return g_engine.get();
+}
+
 // Run one page through the ncnn RealSR engine. Returns 0 on success, or a
 // negative code when cancelled. Throws std::runtime_error with a typed prefix
-// ("model-unavailable:", "process-failed:", "cancelled:") for the Java layer.
-static int runRealSR(const std::string& src, const std::string& dst, int gpuid, int threads,
-                     int scale, int tileSize, const std::string& param, const std::string& bin,
+// ("process-failed:", "cancelled:") for the Java layer.
+static int runRealSR(const std::string& src, const std::string& dst, RealSR* sr,
+                     int quality, int* outWidth, int* outHeight,
                      std::atomic<bool>* cancel) {
     const double tStart = nowMs();
     int w = 0, h = 0, c = 0;
@@ -105,22 +154,9 @@ static int runRealSR(const std::string& src, const std::string& dst, int gpuid, 
         throw std::runtime_error("process-failed:invalid input tensor");
     }
 
-    LOGI("creating RealSR gpuid=%d threads=%d", gpuid, threads);
-    RealSR sr(gpuid, false /*tta*/, threads);
-    // RealSR does NOT initialize these in its constructor — the caller must.
-    // Garbage scale/tilesize → division by zero or an absurd allocation, so a
-    // page would hang or OOM instead of finishing.
-    sr.scale = scale;
-    sr.tilesize = tileSize > 0 ? tileSize : 32;
-    sr.prepadding = 0;
-    LOGI("sr.scale=%d sr.tilesize=%d sr.prepadding=%d", sr.scale, sr.tilesize, sr.prepadding);
-
-    const double tLoad = nowMs();
-    if (sr.load(param.c_str(), bin.c_str()) != 0) {
-        LOGE("model load FAILED: %s", param.c_str());
-        throw std::runtime_error("model-unavailable:failed to load " + param);
-    }
-    LOGI("model loaded in %.0fms", nowMs() - tLoad);
+    const int scale = sr->scale;
+    LOGI("running RealSR scale=%d tilesize=%d prepadding=%d",
+         sr->scale, sr->tilesize, sr->prepadding);
 
     const double tProc = nowMs();
     // RealSR::process() writes INTO the caller's outimage — it must be
@@ -129,7 +165,7 @@ static int runRealSR(const std::string& src, const std::string& dst, int gpuid, 
     // expected layout (elemsize 3, elempack 3 = interleaved RGB).
     ncnn::Mat out;
     out.create(w * scale, h * scale, (size_t)3, 3);
-    if (sr.process(in, out) != 0) {
+    if (sr->process(in, out) != 0) {
         stbi_image_free(rgb);
         LOGE("RealSR::process FAILED");
         throw std::runtime_error("process-failed:RealSR::process failed");
@@ -145,15 +181,23 @@ static int runRealSR(const std::string& src, const std::string& dst, int gpuid, 
 
     const int ow = out.w;
     const int oh = out.h;
+    *outWidth = ow;
+    *outHeight = oh;
     const double tEnc = nowMs();
     // RealSR::process leaves `out.data` as interleaved RGB (3 bytes/pixel).
     // Save it directly — re-running out.to_pixels() would reinterpret that
-    // buffer as planar float channels and produce a corrupted (black/red) PNG.
-    if (stbi_write_png(dst.c_str(), ow, oh, 3, out.data, ow * 3) == 0) {
+    // buffer as planar float channels and produce a corrupted (black/red) image.
+    //
+    // JPEG, not PNG: stb's PNG writer is a naive deflate that costs ~5.7 s and
+    // ~15 MB for a detailed 2400x3600 page, ~30 % of the whole job. JPEG is an
+    // order of magnitude faster and smaller. Note quality <= 90 makes stb
+    // subsample chroma (4:2:0); 91+ keeps 4:4:4 for colour pages.
+    if (stbi_write_jpg(dst.c_str(), ow, oh, 3, out.data, quality) == 0) {
         LOGE("failed to encode %s", dst.c_str());
         throw std::runtime_error("process-failed:failed to encode " + dst);
     }
-    LOGI("encoded %s in %.0fms (page total %.0fms)", dst.c_str(), nowMs() - tEnc, nowMs() - tStart);
+    LOGI("encoded %s (q=%d) in %.0fms (page total %.0fms)",
+         dst.c_str(), quality, nowMs() - tEnc, nowMs() - tStart);
     return 0;
 }
 
@@ -175,7 +219,7 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
     JNIEnv* env, jobject /*thiz*/,
     jstring modelDir, jstring sourcePath, jstring destinationPath,
-    jint scale, jstring model, jint tileSize, jint denoise, jstring jobId) {
+    jint scale, jstring model, jint tileSize, jint denoise, jint quality, jstring jobId) {
 
     const char* modelDirC = env->GetStringUTFChars(modelDir, nullptr);
     const char* srcC = env->GetStringUTFChars(sourcePath, nullptr);
@@ -186,6 +230,8 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
     std::string errKind = "unknown";
     std::string errMsg;
     std::string result;
+    int outW = 0;
+    int outH = 0;
 
     const double tStart = nowMs();
     int gpuid = 0;  // 0 = first Vulkan GPU. (CPU fallback would be -1.)
@@ -207,12 +253,28 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
             errKind = "model-unavailable";
             throw std::runtime_error("unknown model: " + std::string(modelC));
         }
-        LOGI("model paths: %s / %s", param.c_str(), bin.c_str());
+        const int tile = resolveTileSize(tileSize);
+        const int q = quality < 1 ? 1 : (quality > 100 ? 100 : quality);
+        LOGI("model paths: %s / %s (tile=%d quality=%d)", param.c_str(), bin.c_str(), tile, q);
 
         std::atomic<bool>* cancelled = jobFlag(jobC);
         cancelled->store(false);
 
-        int rc = runRealSR(srcC, dstC, gpuid, threads, scale, tileSize, param, bin, cancelled);
+        // Held for the whole page: a second enhancePage call waits instead of
+        // racing the shared engine's Vulkan device.
+        std::lock_guard<std::mutex> engineLock(g_engineMutex);
+        RealSR* sr = acquireEngine(param, bin, gpuid, threads);
+        if (sr == nullptr) {
+            errKind = "model-unavailable";
+            throw std::runtime_error("failed to load " + param);
+        }
+        // RealSR does NOT initialize these in its constructor, and they are
+        // per-page settings even though the engine is cached.
+        sr->scale = scale;
+        sr->tilesize = tile;
+        sr->prepadding = 0;
+
+        int rc = runRealSR(srcC, dstC, sr, q, &outW, &outH, cancelled);
         if (rc < 0) {
             // Cancelled: remove any partial destination and report cancellation.
             std::remove(dstC);
@@ -221,8 +283,8 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
         }
 
         result = "{\"destinationUri\":\"" + std::string(dstC) + "\","
-                 "\"width\":" + std::to_string(0) + ","
-                 "\"height\":" + std::to_string(0) + ","
+                 "\"width\":" + std::to_string(outW) + ","
+                 "\"height\":" + std::to_string(outH) + ","
                  "\"model\":\"" + std::string(modelC) + "\","
                  "\"scale\":" + std::to_string(scale) + "}";
         LOGI("enhancePage done in %.0fms", nowMs() - tStart);

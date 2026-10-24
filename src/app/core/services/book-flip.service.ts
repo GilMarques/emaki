@@ -114,7 +114,13 @@ export class BookFlipService {
       .then((warmedUrls) => {
         if (generation !== this.mountGeneration) return; // a newer mount started
         if (warmedUrls.length === 0) return;
-        this.mountWithUrls(host, book, warmedUrls, layout, zoom, pageIndex, transition);
+        // CSS box of the slot the book mounts into, read BEFORE the
+        // device-pixel sizing in mountWithUrls so a remount can't compound it.
+        const slot = host.parentElement ?? host;
+        this.mountWithUrls(host, book, warmedUrls, layout, zoom, pageIndex, transition, {
+          width: slot.clientWidth,
+          height: slot.clientHeight,
+        });
       });
   }
 
@@ -127,15 +133,30 @@ export class BookFlipService {
     zoom: ZoomMode,
     pageIndex: number,
     transition: PageTransition,
+    cssBox: { readonly width: number; readonly height: number },
   ): void {
     this.unmount();
     this.host = host;
     const interactiveCurl = transition === 'page-curl';
     this.resetHost(host);
 
+    // page-flip draws every page into ONE canvas whose backing store equals
+    // its CSS box — 393x872 CSS px on a 1080x2400 @2.75 screen, so every page
+    // was rasterized at ~1/3 resolution and stretched by the compositor (and
+    // the 2x enhanced derivatives were thrown away). Mount the book at
+    // device-pixel size and scale the host back down with CSS: the canvas
+    // backing store then matches the screen 1:1.
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const devW = Math.max(1, Math.round(cssBox.width * dpr));
+    const devH = Math.max(1, Math.round(cssBox.height * dpr));
+    host.style.width = `${devW}px`;
+    host.style.height = `${devH}px`;
+    host.style.transform = `scale(${1 / dpr})`;
+    host.style.transformOrigin = '0 0';
+
     const generation = ++this.mountGeneration;
 
-    void Promise.all(pageUrls.map((pageUrl) => this.loadImageNaturalSize(pageUrl))).then((loadedImages) => {
+    void this.probeImages(pageUrls, layout).then((loadedImages) => {
       if (generation !== this.mountGeneration || this.host !== host) return;
       if (!host.isConnected) return;
 
@@ -149,11 +170,14 @@ export class BookFlipService {
         const containerH = size.h;
 
       const natural = loadedImages[0]?.natural ?? { width: 800, height: 1200 };
+      // Device-pixel page size: the lib lays out in host px, which are now
+      // device px, so pages rasterize at the screen's real resolution.
       const pageSize = computePageDimensions(containerW, containerH, natural, zoom, layout);
       const rendered = buildRenderedPages(book.pages, pageUrls, loadedImages, layout, pageSize);
       this.logicalIndexByRenderedIndex = rendered.logicalIndexByRenderedIndex;
       this.renderedIndexByLogicalIndex = rendered.renderedIndexByLogicalIndex;
-      this._bookPageSize.set(pageSize);
+      // Viewer geometry (pan extents, magnifier, page rects) is CSS px.
+      this._bookPageSize.set({ width: pageSize.width / dpr, height: pageSize.height / dpr });
 
       const settings: Partial<FlipSetting> = {
         width: pageSize.width,
@@ -451,13 +475,15 @@ export class BookFlipService {
   /** Convert viewport coords to book-local coords (matches UI.getMousePos). */
   private toBookPoint(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this.instance!.getUI().getDistElement().getBoundingClientRect();
-    // The host is CSS-transformed (translate + scale) at non-1× zoom; the
-    // library works in unscaled coordinates, so divide the viewport delta by
-    // the current zoom to keep the fold / tap mapping exact.
+    // The host is CSS-transformed (translate + scale) at non-1× zoom and is
+    // mounted at device-pixel size, while the library works in the canvas's
+    // backing-store (device px) coordinates. Normalize by the visual zoom,
+    // then convert CSS px → device px.
     const scale = this.bookstore.zoom();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
     return {
-      x: (clientX - rect.left) / scale,
-      y: (clientY - rect.top) / scale,
+      x: ((clientX - rect.left) / scale) * dpr,
+      y: ((clientY - rect.top) / scale) * dpr,
     };
   }
 
@@ -468,8 +494,35 @@ export class BookFlipService {
     host.style.removeProperty('min-width');
     host.style.removeProperty('min-height');
     host.style.removeProperty('width');
+    host.style.removeProperty('height');
     host.style.removeProperty('max-width');
     host.style.removeProperty('display');
+    host.style.removeProperty('transform');
+    host.style.removeProperty('transform-origin');
+  }
+
+  /**
+   * Natural size of every page, probed one at a time.
+   *
+   * Loading all pages in parallel kept a whole chapter's bitmaps in memory at
+   * once — with enhanced pages that is 4× the pixels and exhausted the Android
+   * heap. Only landscape pages in the double layout need the decoded image
+   * retained (they get split into halves); everything else keeps just the size.
+   */
+  private async probeImages(
+    urls: readonly string[],
+    layout: 'single' | 'double',
+  ): Promise<LoadedImage[]> {
+    const out: LoadedImage[] = [];
+    for (const url of urls) {
+      const loaded = await this.loadImageNaturalSize(url);
+      const keep =
+        layout === 'double' &&
+        loaded.image !== null &&
+        loaded.natural.width > loaded.natural.height;
+      out.push(keep ? loaded : { natural: loaded.natural, image: null });
+    }
+    return out;
   }
 
   private loadImageNaturalSize(url: string): Promise<LoadedImage> {

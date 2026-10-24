@@ -21,6 +21,7 @@ import {
 
 import type { TaskProgress } from './core/tasks/task-manager.model';
 import { TaskManagerService } from './core/tasks/task-manager.service';
+import { LogService } from './core/services/log.service';
 import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { MenuStateService } from './core/services/menu-state.service';
@@ -62,25 +63,28 @@ export class AppComponent {
   /** Docked sidebar state (shared with every page's menu button). */
   public readonly menu = inject(MenuStateService);
 
-  /** Download jobs shown in the side menu, newest first, at most five. */
-  public readonly downloads = computed(() =>
-    this.tasks
-      .tasks()
-      .filter((t) => t.kind === 'download')
-      .slice(0, 5),
-  );
+  /** Background jobs in the side menu — downloads and enhancements mixed,
+   *  newest first, at most five. */
+  public readonly backgroundTasks = computed(() => this.tasks.tasks().slice(0, 5));
 
-  /** Compact status line under a download's title. */
-  public downloadDetail(task: TaskProgress): string {
+  /** Menu icon for a task: sparkles for upscaling, the download glyph otherwise. */
+  public taskIcon(task: TaskProgress): string {
+    return task.kind === 'upscale' ? 'sparkles' : 'download-outline';
+  }
+
+  /** Compact status line under a task's title. */
+  public taskDetail(task: TaskProgress): string {
+    const count = `${task.total} page${task.total === 1 ? '' : 's'}`;
+    const verb = task.kind === 'upscale' ? 'enhanced' : 'downloaded';
     switch (task.status) {
       case 'queued':
         return 'Queued';
       case 'processing':
-        return `${task.done} / ${task.total} page${task.total === 1 ? '' : 's'}`;
+        return `${task.done} / ${count} ${verb}`;
       case 'done':
-        return `${task.total} page${task.total === 1 ? '' : 's'} downloaded`;
+        return `${count} ${verb}`;
       case 'error':
-        return task.error ?? 'Download failed';
+        return task.error ?? (task.kind === 'upscale' ? 'Enhancement failed' : 'Download failed');
       case 'cancelled':
         return 'Cancelled';
     }
@@ -99,6 +103,10 @@ export class AppComponent {
   }
 
   constructor() {
+    // Start the debug log (session marker + file sink) at launch rather than
+    // when the log viewer is first opened.
+    inject(LogService);
+
     // Apply theme at the document level so every page inherits it.
     effect(() => {
       applyTheme(this.settings.settings().display.interfaceTheme);

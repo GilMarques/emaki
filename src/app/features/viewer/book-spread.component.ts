@@ -88,7 +88,10 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
     const ref = this.hostRef();
     if (ref !== undefined) {
       this.resizeObserver = new ResizeObserver(() => this.zone.run(() => this.tryMount()));
-      this.resizeObserver.observe(ref.nativeElement);
+      // Observe the CSS-sized slot, not the host itself: the host is mounted
+      // at device-pixel size (dpr x CSS), so watching it would feed the
+      // scaled box back into the mount key and loop.
+      this.resizeObserver.observe(ref.nativeElement.parentElement ?? ref.nativeElement);
     }
     this.tryMount();
   }
@@ -103,15 +106,16 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
     this.flip.update();
   }
 
-  /** Mount when we have a book and a host with real dimensions. */
+  /** Mount when we have a book and a slot with real dimensions. */
   private tryMount(): void {
     const book = this.book();
     const host = this.hostRef();
     if (book === null || host === undefined) return;
 
     const el = host.nativeElement;
-    const w = el.clientWidth;
-    const h = el.clientHeight;
+    const slot = el.parentElement ?? el;
+    const w = slot.clientWidth;
+    const h = slot.clientHeight;
     if (w <= 0 || h <= 0) return;
 
     const layout = this.layout();

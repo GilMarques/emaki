@@ -56,7 +56,10 @@ export class CapacitorRealEsrganBackend implements ScanEnhancementBackend {
   public async enhancePage(args: EnhancePageArgs): Promise<EnhancePageResult> {
     const t0 = performance.now();
     try {
-      const res = await RealEsrgan.enhancePage(args);
+      const res = await RealEsrgan.enhancePage({
+        ...args,
+        sourceUri: toNativeSourcePath(args.sourceUri),
+      });
       return res;
     } catch (err) {
       throw makeError('backend-unavailable', String((err as Error)?.message ?? err));
@@ -82,5 +85,25 @@ export class CapacitorRealEsrganBackend implements ScanEnhancementBackend {
 
   public async stopForeground(): Promise<void> {
     await RealEsrgan.stopForeground();
+  }
+}
+
+/** Capacitor's local file server exposes device files under this URL prefix. */
+const FILE_SERVER_MARKER = '/_capacitor_file_';
+
+/**
+ * The native engine opens the page itself (ncnn needs a real file), so a
+ * WebView URL like `https://localhost/_capacitor_file_/data/.../p.jpg` has to
+ * become the device path before crossing the bridge. Anything else (bare
+ * paths, `file://`, `content://`) is passed through untouched.
+ */
+export function toNativeSourcePath(uri: string): string {
+  const marker = uri.indexOf(FILE_SERVER_MARKER);
+  if (marker < 0) return uri;
+  const path = uri.slice(marker + FILE_SERVER_MARKER.length).split(/[?#]/)[0];
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
   }
 }

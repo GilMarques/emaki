@@ -34,15 +34,20 @@ enhancement sheet (quick-actions → "Enhance scans") lets the user switch to 4�
 - `nativeGetCapabilities` — reports `available`/`backend` (`vulkan` if
   `ncnn::get_gpu_count() > 0`, else `cpu`) and the two model ids.
 - `nativeEnhancePage` — resolves model + source + destination paths, decodes the
-  source with **stb**, runs `RealSR::process`, encodes the upscaled PNG with
-  **stb_image_write**, and returns a result JSON. Vulkan is used when present
-  (`gpuid = 0`); the old CPU-only `gpuid = -1` is gone.
+  source with **stb**, runs `RealSR::process`, encodes the upscaled JPEG with
+  **stb_image_write** at the requested `outputQuality`, and returns a result JSON.
+  Vulkan is used when present (`gpuid = 0`); the old CPU-only `gpuid = -1` is gone.
+  The engine (`RealSR` + loaded weights + compiled pipelines, ~0.85 s to build) is
+  cached for the process and rebuilt only when the model or GPU changes.
+- Tiles: `tileSize <= 0` means 256 px (clamped to 32..512). `realsr.cpp` submits
+  and waits after every tile, so small tiles dominate the runtime — 32 px was
+  ~3.2× slower than 256 px on a Dimensity 900 and left visible block seams.
 - `nativeCancelPage` — sets a per-job `std::atomic<bool>` so an in-flight page is
   abandoned (coarse: checked before/after the page; see "Cancellation" below for
   the finer-grained between-tile edit).
 - Java `RealEsrganPlugin` — copies `content://` (scoped-storage) source URIs to the
-  app cache so ncnn can open them, and maps the `enhanced/<hash>.png` destination
-  to `<cache>/enhanced/<hash>.png`.
+  app cache so ncnn can open them, and maps the `enhanced/<hash>.jpg` destination
+  to `<cache>/enhanced/<hash>.jpg`.
 
 ## Vendoring (build prerequisite)
 
@@ -120,8 +125,8 @@ These are the "missing pieces" — none are in the engine, but they sit on the
 TS ↔ native boundary and could not be exercised without a device:
 
 1. **FileSystem round-trip.** On native, `PageAssetService.buildDestinationUri`
-   returns `enhanced/<hash>.png`; the Java layer maps that to
-   `<cache>/enhanced/<hash>.png` and the native result returns the **absolute**
+   returns `enhanced/<hash>.jpg`; the Java layer maps that to
+   `<cache>/enhanced/<hash>.jpg` and the native result returns the **absolute**
    path. The reader resolves it via `FilePageService.displayUrl` →
    `FILE_SYSTEM_BROWSER.readFile`. Today `FILE_SYSTEM_BROWSER` is the **Tauri**
    implementation; on Capacitor there is no native FS port wired yet, so the

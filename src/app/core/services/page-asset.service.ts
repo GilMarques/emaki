@@ -6,6 +6,13 @@ import type { EnhancementCacheKey } from '../models/scan-enhancement.model';
 
 const ENHANCED_DIR = 'enhanced';
 
+/** Where native derivatives physically live. The Android plugin maps
+ *  `enhanced/<name>` to `<app cache>/enhanced/<name>`, i.e. Directory.Cache —
+ *  not Directory.Documents. Reading the wrong directory made `exists()` always
+ *  false, so every re-enabled book re-ran the whole enhancement queue and
+ *  `enforceBudget` never evicted anything. */
+const NATIVE_DIRECTORY = Directory.Cache;
+
 /** Stable, filesystem-safe hash of an arbitrary string (FNV-1a, base36). */
 export function sourceHashFor(url: string): string {
   let h = 0x811c9dc5;
@@ -56,13 +63,18 @@ export class PageAssetService {
   /** Build the destination URI for a derivative. On native this resolves to a
    *  real app-owned file; in web it is a logical identifier (never persisted).
    *
+   *  Native (Capacitor/Android) derivatives are JPEG: the encoder measures an
+   *  order of magnitude faster and ~20× smaller than stb's PNG writer. Desktop
+   *  (Tauri/ONNX) still writes PNG.
+   *
    *  On Tauri/desktop (not a Capacitor native platform) we write a REAL sibling
    *  file in a `.enhanced` subfolder next to the source so the very same
    *  file→blob-URL converter used for originals (FilePageService) can serve the
    *  upscaled page to the canvas. The cache key is hashed into a safe filename
    *  because book ids contain `/` and `:`. */
   public buildDestinationUri(key: EnhancementCacheKey, sourceUrl = ''): string {
-    const filename = `${filenameHash(cacheKeyString(key))}.png`;
+    const extension = Capacitor.isNativePlatform() ? '.jpg' : '.png';
+    const filename = `${filenameHash(cacheKeyString(key))}${extension}`;
     if (Capacitor.isNativePlatform()) {
       return `${ENHANCED_DIR}/${filename}`;
     }
@@ -86,7 +98,7 @@ export class PageAssetService {
     if (this.memory.has(uri)) return true;
     if (!Capacitor.isNativePlatform()) return false;
     try {
-      await Filesystem.stat({ path: uri, directory: Directory.Documents });
+      await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
       return true;
     } catch {
       return false;
@@ -98,7 +110,7 @@ export class PageAssetService {
     this.memory.delete(uri);
     if (!Capacitor.isNativePlatform()) return;
     try {
-      await Filesystem.deleteFile({ path: uri, directory: Directory.Documents });
+      await Filesystem.deleteFile({ path: uri, directory: NATIVE_DIRECTORY });
     } catch {
       // Already gone or inaccessible — ignore.
     }
@@ -118,7 +130,7 @@ export class PageAssetService {
     let used = 0;
     for (const uri of uris) {
       try {
-        const stat = await Filesystem.stat({ path: uri, directory: Directory.Documents });
+        const stat = await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
         used += stat.size ?? 0;
       } catch {
         continue;
@@ -128,8 +140,8 @@ export class PageAssetService {
     for (const uri of uris) {
       if (used <= budgetBytes) break;
       try {
-        const stat = await Filesystem.stat({ path: uri, directory: Directory.Documents });
-        await Filesystem.deleteFile({ path: uri, directory: Directory.Documents });
+        const stat = await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
+        await Filesystem.deleteFile({ path: uri, directory: NATIVE_DIRECTORY });
         used -= stat.size ?? 0;
         removed++;
       } catch {

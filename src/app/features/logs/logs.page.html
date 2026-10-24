@@ -1,0 +1,147 @@
+<ion-header>
+  <ion-toolbar class="logs-bar">
+    <ion-buttons slot="start">
+      <ov-menu-button></ov-menu-button>
+    </ion-buttons>
+
+    <ion-title class="logs-title">Debug logs</ion-title>
+
+    <ion-buttons slot="end" class="bar-actions">
+      <ion-button class="bar-icon" (click)="copyAll()" aria-label="Copy logs" title="Copy logs">
+        <ion-icon slot="icon-only" name="copy-outline"></ion-icon>
+      </ion-button>
+      <ion-button class="bar-icon" (click)="openClear()" aria-label="Clear logs" title="Clear logs">
+        <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="controls">
+    <ion-segment
+      class="source-segment"
+      [value]="source()"
+      (ionChange)="setSource($any($event).detail.value)"
+    >
+      <ion-segment-button value="session" aria-label="This session">
+        <ion-label>This session</ion-label>
+      </ion-segment-button>
+      <ion-segment-button value="device" aria-label="Saved file">
+        <ion-label>Saved file</ion-label>
+      </ion-segment-button>
+    </ion-segment>
+
+    <ion-searchbar
+      class="log-search"
+      [value]="query()"
+      placeholder="Filter by tag or text"
+      debounce="120"
+      [animated]="false"
+      (ionInput)="setQuery($any($event).detail.value)"
+    ></ion-searchbar>
+
+    <div class="chips">
+      <button
+        type="button"
+        class="chip"
+        [class.active]="filter() === 'all'"
+        (click)="setFilter('all')"
+      >
+        All <span>{{ counts().total }}</span>
+      </button>
+      <button
+        type="button"
+        class="chip"
+        [class.active]="filter() === 'warn'"
+        (click)="setFilter('warn')"
+      >
+        Warnings <span>{{ counts().warnings }}</span>
+      </button>
+      <button
+        type="button"
+        class="chip"
+        [class.active]="filter() === 'error'"
+        (click)="setFilter('error')"
+      >
+        Errors <span>{{ counts().errors }}</span>
+      </button>
+    </div>
+  </div>
+
+  @if (!persisted && source() === 'device') {
+    <div class="placeholder">
+      <ion-icon name="document-text-outline" aria-hidden="true"></ion-icon>
+      <h2>No file on this platform</h2>
+      <p>
+        Logs are written to disk only in the Android/iOS build. Use the browser console here, or
+        switch to “This session”.
+      </p>
+    </div>
+  } @else if (visible().length === 0) {
+    <div class="placeholder">
+      <ion-icon name="bug-outline" aria-hidden="true"></ion-icon>
+      <h2>No log lines</h2>
+      <p>
+        @if (active().length === 0) {
+          Nothing has been logged yet. Open a book or trigger the action you want to trace.
+        } @else {
+          Nothing matches this filter.
+        }
+      </p>
+    </div>
+  } @else {
+    <div class="log-list">
+      @for (entry of visible(); track entry.id) {
+        <div
+          class="log-row"
+          [class.level-debug]="entry.level === 'debug'"
+          [class.level-warn]="entry.level === 'warn'"
+          [class.level-error]="entry.level === 'error'"
+          [title]="dateOf(entry.ts)"
+        >
+          <span class="log-time">{{ timeOf(entry.ts) }}</span>
+          <span class="log-level">{{ entry.level }}</span>
+          <span class="log-tag">[{{ entry.tag }}]</span>
+          <span class="log-msg">{{ entry.message }}</span>
+          @if (entry.detail) {
+            <pre class="log-detail">{{ entry.detail }}</pre>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="log-foot">
+      <span>
+        {{ active().length }} entr{{ active().length === 1 ? 'y' : 'ies' }}
+        @if (matched().length !== active().length) {
+          · {{ matched().length }} matching
+        }
+        @if (omitted() > 0) {
+          · showing newest {{ visible().length }}
+        }
+      </span>
+      @if (filePath(); as path) {
+        <span class="log-path">{{ path }}</span>
+      }
+    </div>
+  }
+
+  <ion-alert
+    [isOpen]="clearOpen()"
+    header="Clear debug logs?"
+    message="Both the in-memory buffer and the log file on the device are deleted."
+    [buttons]="clearButtons"
+    (didDismiss)="onClearDismiss($any($event).detail.role)"
+  ></ion-alert>
+
+  <ion-toast
+    [isOpen]="toastMessage() !== null"
+    [message]="toastMessage() ?? ''"
+    [duration]="3000"
+    swipeGesture="vertical"
+    position="bottom"
+    color="light"
+    (ionToastDidDismiss)="toastMessage.set(null)"
+  ></ion-toast>
+</ion-content>

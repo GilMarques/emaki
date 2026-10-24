@@ -72,3 +72,6 @@ testem.log
 # Generated preset-book manifest (produced by `npm run presets:gen`)
 /src/assets/preset-books.json
 Thumbs.db
+
+# Local CodeGraph index (per-machine)
+/.codegraph/

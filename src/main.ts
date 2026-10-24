@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 
 import { AppComponent } from './app/app.component';
 import { APP_ROUTES } from './app/app.routes';
+import { installLogCapture } from './app/core/debug/log-store';
 import { LIBRARY_SCANNER } from './app/core/native/library-scanner.port';
 import { AssetsPresetScanner } from './app/core/native/assets-preset.scanner';
 import { FileSystemLibraryScanner } from './app/core/native/filesystem-library.scanner';
@@ -27,6 +28,10 @@ const hasTauri = (): boolean =>
  * the `@openviewer/saf-browser` plugin). Web/debug keeps the preset manifest.
  */
 const hasRealFs = (): boolean => hasTauri() || Capacitor.isNativePlatform();
+
+// Capture console output and uncaught errors before Angular starts, so a
+// failure during bootstrap still lands in the debug log.
+installLogCapture();
 
 bootstrapApplication(AppComponent, {
   providers: [

@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 
 import type { Book } from '../models/book.model';
 import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
@@ -6,11 +7,13 @@ import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 /**
  * Turns a real filesystem path into a URL the reader/canvas can draw.
  *
- * Strategy: read the file bytes across the Tauri bridge and wrap them in an
- * object URL. This is reliable across environments (it does not depend on the
- * Tauri `asset://` protocol being scoped to the path). Object URLs are cached by
- * path and revoked on `revokeAll()` (book close) to free memory; extracted-
- * archive temp dirs are removed then too.
+ * On native, device files are served by Capacitor's local file server
+ * (`convertFileSrc`) so the WebView streams them from disk — reading whole
+ * pages through the bridge produces base64 strings that exhaust the JS heap on
+ * large (enhanced) pages. Everything else (SAF `content://`, Tauri) falls back
+ * to reading the bytes and wrapping them in an object URL, cached by path and
+ * revoked on `revokeAll()` (book close); extracted-archive temp dirs are
+ * removed then too.
  *
  * Callers warm the cache via `preload()` (whole book) or `ensure()` (single
  * path, e.g. a cover) before rendering so the first paint already has real URLs.
@@ -18,6 +21,7 @@ import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 @Injectable({ providedIn: 'root' })
 export class FilePageService {
   private readonly fs = inject(FILE_SYSTEM_BROWSER);
+  private readonly native = Capacitor.isNativePlatform();
 
   private readonly blobCache = new Map<string, string>();
   private readonly tempDirs = new Set<string>();
@@ -29,6 +33,14 @@ export class FilePageService {
   /** Synchronous: a displayable URL for `fsPath` (cached blob, or the raw path
    *  until `ensure()` finishes loading it). */
   public displayUrl(fsPath: string): string {
+    // Already loadable by the WebView: http(s) (incl. Capacitor's file server)
+    // or blob/data URLs. Downloaded pages arrive in this form.
+    if (isLoadableUrl(fsPath)) return fsPath;
+    // Device files are served by Capacitor's local file server. Streaming them
+    // from disk keeps the WebView's decoder in charge of memory; reading whole
+    // pages through the bridge (base64) OOMs on enhanced pages, which are 4×
+    // the pixels of the original.
+    if (this.canStreamFromDisk(fsPath)) return Capacitor.convertFileSrc(fsPath);
     const cached = this.blobCache.get(fsPath);
     if (cached) return cached;
     // Not yet loaded — kick off the fetch; revision bumps once it is ready so the
@@ -39,6 +51,8 @@ export class FilePageService {
 
   /** Ensure `fsPath`'s bytes are loaded into a blob URL (no-op if cached). */
   public async ensure(fsPath: string): Promise<string> {
+    if (isLoadableUrl(fsPath)) return fsPath;
+    if (this.canStreamFromDisk(fsPath)) return Capacitor.convertFileSrc(fsPath);
     const cached = this.blobCache.get(fsPath);
     if (cached) return cached;
     const blob = await this.fs.readFile(fsPath);
@@ -46,6 +60,13 @@ export class FilePageService {
     this.blobCache.set(fsPath, url);
     this._revision.update((r) => r + 1);
     return url;
+  }
+
+  /** True when the WebView can fetch this device path/URI through Capacitor. */
+  private canStreamFromDisk(path: string): boolean {
+    if (!this.native) return false;
+    // content:// (SAF) isn't mapped by convertFileSrc and still needs a read.
+    return path.startsWith('/') || path.startsWith('file://');
   }
 
   /** True while `fsPath` has a live blob URL cached (i.e. is in use). */
@@ -56,9 +77,19 @@ export class FilePageService {
   /** Warm the cache for a whole book (all pages). */
   public async preload(book: Book): Promise<void> {
     if (book.source.type !== 'folder') return;
-    await Promise.all(
-      book.pages.map((p) => this.ensure(p.url).catch(() => null)),
-    );
+    // Only pages that need a bridge read (SAF content://) are warmed. Device
+    // paths and http(s) URLs are streamed by the WebView, so they need nothing.
+    // Read a few at a time: a full chapter of base64 strings at once is what
+    // used to exhaust the heap on big pages.
+    const pending = book.pages
+      .map((p) => p.url)
+      .filter((url) => !isLoadableUrl(url) && !this.canStreamFromDisk(url));
+    const BATCH = 3;
+    for (let i = 0; i < pending.length; i += BATCH) {
+      await Promise.all(
+        pending.slice(i, i + BATCH).map((url) => this.ensure(url).catch(() => null)),
+      );
+    }
   }
 
   /** Remember an extracted-archive temp dir so it is cleaned up on close. */
@@ -81,4 +112,9 @@ export class FilePageService {
     }
     this._revision.update((r) => r + 1);
   }
+}
+
+/** URL schemes the WebView loads itself, no bridge read required. */
+function isLoadableUrl(value: string): boolean {
+  return /^(https?:|blob:|data:|capacitor:)/i.test(value);
 }

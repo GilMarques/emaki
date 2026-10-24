@@ -60,16 +60,16 @@
           </ion-menu-toggle>
         </ion-list>
 
-        @if (downloads().length > 0) {
+        @if (backgroundTasks().length > 0) {
           <div class="menu-section">
-            <div class="menu-section-title">Downloads</div>
+            <div class="menu-section-title">Tasks</div>
             <ion-list lines="none" class="menu-tasks">
-              @for (task of downloads(); track task.id) {
+              @for (task of backgroundTasks(); track task.kind + ':' + task.id) {
                 <ion-item class="task-item">
-                  <ion-icon aria-hidden="true" slot="start" name="download-outline"></ion-icon>
+                  <ion-icon aria-hidden="true" slot="start" [name]="taskIcon(task)"></ion-icon>
                   <ion-label>
                     <h3>{{ task.title }}</h3>
-                    <p>{{ downloadDetail(task) }}</p>
+                    <p>{{ taskDetail(task) }}</p>
                   </ion-label>
                   @if (task.status === 'queued' || task.status === 'processing') {
                     <ion-spinner slot="end" name="crescent"></ion-spinner>

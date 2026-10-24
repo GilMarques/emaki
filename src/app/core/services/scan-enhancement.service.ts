@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import type { Book, Page } from '../models/book.model';
 import { BookstoreService } from './bookstore.service';
@@ -19,7 +19,13 @@ import {
 } from '../models/scan-enhancement.model';
 
 const STORAGE_PREFIX = 'openviewer:enhancement:';
-const TILE_SIZE = 0; // 0 = native auto
+/**
+ * Tile size handed to the native engine (0 = let it pick). `realsr.cpp` syncs
+ * the GPU after every tile, so tiny tiles dominate the runtime: on a Dimensity
+ * 900, 32 px took 40 s for a 1200×1800 page, 256 px takes 12.6 s. 256 is also
+ * well under the VRAM that made 512 risky on this class of device.
+ */
+const TILE_SIZE = 256;
 
 interface InternalJob {
   readonly bookId: string;
@@ -110,6 +116,9 @@ export class ScanEnhancementService {
       this._displayedBookId.set(book ? book.id : null);
       // Closing the reader is a safe point to dispose queued derivatives.
       this.gc();
+      // A book enhanced in an earlier session has no in-memory job yet; restore
+      // it so its enhanced pages render without tapping Enhance again.
+      if (book !== null) untracked(() => void this.restoreForOpenBook(book));
     });
 
     // Persist on any state change (settings or any job map), debounced.
@@ -481,8 +490,51 @@ export class ScanEnhancementService {
     }
   }
 
-  /** Pick the next (book, index) to process, prioritizing the open book. */
-  private nextTarget(): { bookId: string; index: number } | null {
+  /**
+   * Load a book's persisted enhancement record the first time it is opened.
+   *
+   * Jobs only live in memory otherwise, so a book enhanced in an earlier session
+   * rendered its originals until the user tapped Enhance again. Restoring also
+   * resumes an enabled job (it was left enabled on purpose).
+   */
+  private async restoreForOpenBook(book: Book): Promise<void> {
+    if (this._jobs().has(book.id)) return;
+    const persisted = this.readPersisted(book.id);
+    if (persisted === null || persisted.pages === 0) return;
+
+    await this.refreshCapabilities();
+    if (!this.isSupported()) return;
+    // The reader may have moved on while capabilities were resolving.
+    if (this._displayedBookId() !== book.id || this._jobs().has(book.id)) return;
+
+    const job = this.getOrCreateJob(book);
+    job.enabled = persisted.enabled;
+    job.state =
+      this.loadPersisted(book.id, book.pages, job.settings) ??
+      this.seedPending(book.id, book.pages, job.settings);
+    this._jobs.update((m) => new Map(m).set(book.id, job));
+    // Let the reader re-resolve page URLs to the restored derivatives.
+    this._revision.update((r) => r + 1);
+    if (job.enabled) {
+      this.syncTask(job);
+      void this.pump();
+    }
+  }
+
+  /** Minimal persisted record, enough to decide whether to restore a job. */
+  private readPersisted(bookId: string): { enabled: boolean; pages: number } | null {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + bookId);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw) as { enabled?: boolean; pages?: unknown[] };
+      return { enabled: parsed.enabled === true, pages: parsed.pages?.length ?? 0 };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Pick the next (book, index) to process, prioritizing the open book. */  private nextTarget(): { bookId: string; index: number } | null {
     const displayed = this._displayedBookId();
     const jobs = this._jobs();
 
@@ -636,6 +688,7 @@ export class ScanEnhancementService {
         model: settings.model,
         tileSize: TILE_SIZE,
         denoise: settings.denoise,
+        outputQuality: settings.outputQuality,
         jobId,
       });
       // Reject stale / wrong-book completions.
@@ -801,7 +854,24 @@ export class ScanEnhancementService {
     let status: TaskStatus = 'queued';
     if (processing > 0) status = 'processing';
     else if (total > 0 && done >= total) status = 'done';
-    this.tasks.update(id, 'upscale', { done, total, status });
+    else {
+      // "Queued" should mean waiting for the single native slot. If this job
+      // has nothing runnable left and only failures remain, it is stuck, not
+      // queued — otherwise a job whose pages all failed sits at "Queued" forever.
+      let runnable = 0;
+      let failed = 0;
+      for (const s of job.state.values()) {
+        if (s.status === 'pending' || s.status === 'queued') runnable++;
+        else if (s.status === 'error') failed++;
+      }
+      if (runnable === 0 && failed > 0) status = 'error';
+    }
+    this.tasks.update(id, 'upscale', {
+      done,
+      total,
+      status,
+      error: status === 'error' ? 'Some pages could not be enhanced' : undefined,
+    });
   }
 
   // ─────────────────────────────── Persistence ───────────────────────────────

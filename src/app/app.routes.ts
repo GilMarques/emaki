@@ -38,4 +38,8 @@ export const APP_ROUTES: Routes = [
     loadComponent: () =>
       import('./features/settings/settings.page').then((m) => m.SettingsPage),
   },
+  {
+    path: 'logs',
+    loadComponent: () => import('./features/logs/logs.page').then((m) => m.LogsPage),
+  },
 ];

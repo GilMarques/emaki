@@ -1,0 +1,219 @@
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top bar: same compact, flat treatment as the library and history pages. */
+
+ion-toolbar.logs-bar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
+  --min-height: 52px;
+  --padding-start: 2px;
+  --padding-end: 2px;
+}
+
+.logs-title {
+  padding: 0 6px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bar-actions {
+  margin-inline-end: 2px;
+}
+
+.bar-icon {
+  width: 36px;
+  height: 36px;
+  margin: 0 1px;
+  --padding-start: 0;
+  --padding-end: 0;
+  --background: transparent;
+  --color: var(--ion-color-medium, #92949c);
+
+  ion-icon {
+    font-size: 20px;
+  }
+}
+
+/* Controls stay put while the log scrolls underneath. */
+
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 10px 8px;
+  background: var(--ion-background-color);
+  border-bottom: 1px solid var(--ion-color-step-100, rgba(0, 0, 0, 0.08));
+}
+
+.source-segment {
+  --background: var(--ion-color-step-50, rgba(0, 0, 0, 0.04));
+  margin-bottom: 6px;
+}
+
+ion-searchbar.log-search {
+  padding: 0;
+  --background: var(--ion-color-step-50, rgba(0, 0, 0, 0.04));
+  --border-radius: 8px;
+  --box-shadow: none;
+  --color: var(--ion-text-color);
+  --placeholder-color: var(--ion-color-medium, #92949c);
+  --icon-color: var(--ion-color-medium, #92949c);
+  font-size: 0.85rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.12));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ion-color-medium, #92949c);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+
+  span {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+  }
+
+  &.active {
+    border-color: var(--ion-color-primary);
+    background: rgba(var(--ion-color-primary-rgb), 0.1);
+    color: var(--ion-color-primary);
+  }
+}
+
+/* Log rows: monospace, newest first, level colouring. */
+
+.log-list {
+  padding: 2px 0 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  column-gap: 6px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--ion-color-step-50, rgba(0, 0, 0, 0.04));
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &.level-error {
+    background: rgba(var(--ion-color-danger-rgb, 214, 57, 57), 0.07);
+  }
+
+  &.level-warn {
+    background: rgba(var(--ion-color-warning-rgb, 255, 196, 9), 0.07);
+  }
+}
+
+.log-time {
+  color: var(--ion-color-medium, #92949c);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-level {
+  font-weight: 700;
+  text-transform: uppercase;
+
+  .level-debug & {
+    color: var(--ion-color-medium, #92949c);
+  }
+
+  .level-warn & {
+    color: var(--ion-color-warning-shade, #b8860b);
+  }
+
+  .level-error & {
+    color: var(--ion-color-danger, #d63939);
+  }
+}
+
+.log-tag {
+  color: var(--ion-color-primary, #3880ff);
+  opacity: 0.85;
+}
+
+.log-msg {
+  min-width: 0;
+
+  .level-error & {
+    color: var(--ion-color-danger-shade, #b02a2a);
+  }
+}
+
+.log-detail {
+  grid-column: 1 / -1;
+  margin: 1px 0 3px;
+  padding: 0;
+  color: var(--ion-color-medium, #92949c);
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px calc(16px + var(--ion-safe-area-bottom, 0px));
+  color: var(--ion-color-medium, #92949c);
+  font-size: 0.7rem;
+}
+
+.log-path {
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+/* Empty state. */
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 45vh;
+  padding: 32px 40px;
+  text-align: center;
+
+  ion-icon {
+    font-size: 34px;
+    color: var(--ion-color-medium, #92949c);
+  }
+
+  h2 {
+    margin: 6px 0 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    color: var(--ion-color-medium, #92949c);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+}

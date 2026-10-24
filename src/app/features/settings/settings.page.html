@@ -23,4 +23,15 @@
       </ion-button>
     </ion-item>
   </ion-list>
+
+  <ion-list-header>Debug</ion-list-header>
+  <ion-list lines="inset">
+    <ion-item routerLink="/logs" button detail>
+      <ion-icon slot="start" name="bug-outline"></ion-icon>
+      <ion-label>
+        <h2>Debug logs</h2>
+        <p>Console output, warnings and errors from this session and the saved file</p>
+      </ion-label>
+    </ion-item>
+  </ion-list>
 </ion-content>

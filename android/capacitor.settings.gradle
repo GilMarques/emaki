@@ -16,3 +16,9 @@ project(':capacitor-keyboard').projectDir = new File('../node_modules/@capacitor
 
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../node_modules/@capacitor/status-bar/android')
+
+include ':openviewer-saf-browser'
+project(':openviewer-saf-browser').projectDir = new File('../native/saf-browser/android')
+
+include ':openviewer-real-esrgan'
+project(':openviewer-real-esrgan').projectDir = new File('../native/real-esrgan/android')

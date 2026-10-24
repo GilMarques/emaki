@@ -11,6 +11,7 @@
     "test": "ng test",
     "lint": "ng lint",
     "presets:gen": "node scripts/gen-preset-books.mjs",
+    "logs:pull": "bash scripts/pull-logs.sh",
     "tauri": "tauri"
   },
   "private": true,

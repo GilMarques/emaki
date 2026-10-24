@@ -52,6 +52,7 @@ export class TauriRealEsrganBackend implements ScanEnhancementBackend {
     if (!invoke) {
       throw new Error('Tauri enhancement backend is not available.');
     }
+    // The desktop engine still encodes PNG, so `outputQuality` is not forwarded.
     const result = await invoke('enhance_page', {
       sourceUri: args.sourceUri,
       destinationUri: args.destinationUri,

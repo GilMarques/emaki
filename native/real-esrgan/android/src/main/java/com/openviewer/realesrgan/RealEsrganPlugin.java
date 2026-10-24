@@ -43,6 +43,7 @@ public class RealEsrganPlugin extends Plugin {
             String model,
             int tileSize,
             int denoise,
+            int quality,
             String jobId);
 
     private native boolean nativeCancelPage(String jobId);
@@ -69,9 +70,11 @@ public class RealEsrganPlugin extends Plugin {
         String model = call.getString("model", "realesrgan-v2-anime-x2");
         int tileSize = call.getInt("tileSize", 0);
         int denoise = call.getInt("denoise", 0);
+        int outputQuality = call.getInt("outputQuality", 90);
         String jobId = call.getString("jobId", "");
         Log.i(TAG, "enhancePage() source=" + sourceUri + " dest=" + destinationUri
-                + " scale=" + scale + " model=" + model + " tileSize=" + tileSize + " denoise=" + denoise);
+                + " scale=" + scale + " model=" + model + " tileSize=" + tileSize
+                + " denoise=" + denoise + " outputQuality=" + outputQuality);
 
         if (sourceUri.isEmpty() || destinationUri.isEmpty() || jobId.isEmpty()) {
             Log.e(TAG, "enhancePage() invalid_args (missing required arg)");
@@ -96,7 +99,7 @@ public class RealEsrganPlugin extends Plugin {
             String modelDir = ensureModelsDir();
             Log.i(TAG, "enhancePage() modelDir=" + modelDir);
             Log.i(TAG, "enhancePage() calling nativeEnhancePage");
-            String json = nativeEnhancePage(modelDir, srcPath, dstPath, scale, model, tileSize, denoise, jobId);
+            String json = nativeEnhancePage(modelDir, srcPath, dstPath, scale, model, tileSize, denoise, outputQuality, jobId);
             Log.i(TAG, "enhancePage() native done -> " + json + " (" + ms(t0) + "ms total)");
             call.resolve(new JSObject(json));
         } catch (Throwable e) {
@@ -234,9 +237,10 @@ public class RealEsrganPlugin extends Plugin {
 
     /**
      * Resolve a DESTINATION URI to a real file path under the app cache. The TS
-     * layer passes `enhanced/<hash>.png` (or `enhanced://<hash>.png`); we place
-     * the derivative in `<cache>/enhanced/<hash>.png` so it is readable by the
-     * reader's blob-URL resolver and is cleared with the app cache.
+     * layer passes `enhanced/<hash>.jpg` (or `enhanced://<hash>.jpg`); we place
+     * the derivative in `<cache>/enhanced/<hash>.jpg` so it is readable by the
+     * reader's file resolver and is cleared with the app cache. The extension is
+     * whatever the TS layer chose — the native encoder writes JPEG.
      */
     private String resolveDestinationPath(String uri) {
         if (uri == null) return null;

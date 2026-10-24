@@ -198,18 +198,8 @@ ion-img.cover::part(image) {
   text-overflow: ellipsis;
 }
 
-/* Circular spinner shown top-left while a book's enhancement is running. */
-.enhancing-spinner {
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  z-index: 3;
-  width: 20px;
-  height: 20px;
-  color: #fff;
-}
-
-/* Sparkles action over the artwork. Dimmed until the book is enhanced. */
+/* Sparkles action over the artwork. Dimmed until the book is enhanced, and
+   swaps to a spinner while that book's enhancement is running. */
 .enhance-btn {
   position: absolute;
   top: 6px;
@@ -229,6 +219,17 @@ ion-img.cover::part(image) {
 
   ion-icon {
     font-size: 15px;
+  }
+
+  ion-spinner {
+    width: 15px;
+    height: 15px;
+    --color: #fff;
+  }
+
+  &.busy {
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
   }
 
   &.enhanced {

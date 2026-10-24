@@ -15,6 +15,8 @@ export interface EnhancePageArgs {
   readonly model: EnhancementModelId;
   readonly tileSize: number;
   readonly denoise: number;
+  /** Output encode quality (0..100) for the lossy derivative format. */
+  readonly outputQuality: number;
   /** Opaque id so the caller can cancel an in-flight job. */
   readonly jobId: string;
 }
