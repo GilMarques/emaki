@@ -47,8 +47,8 @@ Pull it from a **debug** build with `run-as` (no root needed):
 npm run logs:pull
 
 # or by hand, oldest lines first:
-adb exec-out run-as io.ionic.starter cat files/emaki-logs/emaki.log.1 > emaki.log
-adb exec-out run-as io.ionic.starter cat files/emaki-logs/emaki.log >> emaki.log
+adb exec-out run-as com.openviewer.emaki cat files/emaki-logs/emaki.log.1 > emaki.log
+adb exec-out run-as com.openviewer.emaki cat files/emaki-logs/emaki.log >> emaki.log
 
 wc -l emaki.log
 ```
@@ -73,7 +73,7 @@ so do the same when reading by hand.
   ```bash
   adb logcat -s Capacitor/Console
   # or only this app:
-  adb logcat -s Capacitor/Console --pid=$(adb shell pidof io.ionic.starter)
+  adb logcat -s Capacitor/Console --pid=$(adb shell pidof com.openviewer.emaki)
   ```
 
   On native the console wrapper pre-formats arguments to a single string, so
@@ -88,7 +88,7 @@ so do the same when reading by hand.
 
   ```bash
   adb logcat -s AndroidRuntime
-  adb logcat | grep -i "io.ionic.starter"
+  adb logcat | grep -i "com.openviewer.emaki"
   ```
 
 ## Logging from code

@@ -125,3 +125,11 @@ Always run `npx cap sync` after any change to `www/` output or `capacitor.config
 - Feature builds cleanly (`npm run build`) and lints clean (`npm run lint`).
 - Smoke-tested on a real Android device or emulator via `npx cap run android`.
 - No new TODOs left in shipped code. Stubs are not "done" — say so or finish them.
+
+## Releases
+
+The app is never published on the Play Store. A release is a GitHub Release
+with a signed APK attached: bump `package.json`, commit, tag `v<version>`, push
+the tag. CI builds, signs and publishes the APK. See `docs/releases.md`. The
+signing keystore lives outside the repo (`~/.emaki/`); losing it means no
+device can ever install an update again.
