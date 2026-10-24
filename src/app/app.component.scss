@@ -32,6 +32,23 @@ ion-menu ion-footer ion-item {
   --background: var(--ion-background-color);
 }
 
+/*
+ * Film-grain layer. Grain is a texture, not a CSS filter: a transparent,
+ * pointer-events-none noise sheet fixed above every page and overlay. The
+ * Grain slider drives its opacity (see AppComponent.grainOpacity), so it adds
+ * tiny specks instead of dimming the app.
+ */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  background-repeat: repeat;
+  background-size: 160px 160px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='2.6' intercept='-0.8'/%3E%3CfeFuncG type='linear' slope='2.6' intercept='-0.8'/%3E%3CfeFuncB type='linear' slope='2.6' intercept='-0.8'/%3E%3CfeFuncA type='linear' slope='0' intercept='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 /* Background tasks (downloads + enhancements), capped at five. */
 .menu-section {
   padding-bottom: 8px;

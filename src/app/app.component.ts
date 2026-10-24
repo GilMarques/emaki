@@ -102,6 +102,17 @@ export class AppComponent {
     this.bookstore.closeBook();
   }
 
+  /**
+   * Film-grain overlay opacity. Grain is a texture layer, not a CSS filter —
+   * mapping it onto `brightness()` would only darken the app. 0 = off; at 100
+   * the noise sheet runs at 90% so the specks stay clearly visible.
+   */
+  public readonly grainOpacity = computed(() => {
+    const grain = this.settings.settings().filters.grain;
+    if (!grain.enabled) return 0;
+    return (Math.min(100, Math.max(0, grain.value)) / 100) * 0.9;
+  });
+
   constructor() {
     // Start the debug log (session marker + file sink) at launch rather than
     // when the log viewer is first opened.

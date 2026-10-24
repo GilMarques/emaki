@@ -104,23 +104,6 @@ ov-book-spread {
 /* Discrete, transparent, centered-top trigger. Touch target is 44x44
    (Apple HIG min) but the visible glyph is smaller so it reads as
    "barely there". */
-/* Current zoom level — white pill with black text, bottom-left. */
-.zoom-label {
-  position: absolute;
-  bottom: max(var(--ion-safe-area-bottom, 12px), 12px);
-  left: max(var(--ion-safe-area-left, 12px), 12px);
-  z-index: 10;
-  padding: 2px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #111;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  user-select: none;
-  pointer-events: none;
-}
 
 /* Pages menu: dimmed backdrop + bottom sheet with title, progress, thumbnails. */
 .pages-backdrop {

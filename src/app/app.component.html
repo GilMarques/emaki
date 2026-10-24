@@ -122,4 +122,7 @@
     </ng-template>
   </ion-modal>
 
+  @if (grainOpacity() > 0) {
+    <div class="grain-overlay" [style.opacity]="grainOpacity()" aria-hidden="true"></div>
+  }
 </ion-app>

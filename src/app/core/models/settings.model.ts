@@ -48,18 +48,18 @@ export type ZoomMode =
 export type PageTransition = 'none' | 'slide-horizontal' | 'slide-vertical' | 'page-curl';
 
 /**
- * Sampling method for image upscaling/downscaling. Mapped to CSS
- * `image-rendering` where the browser supports it; higher-quality
- * entries (bicubic, lanczos3) are stored but inert until a WebGL
- * filter lands — only nearest-neighbor visibly differs today.
+ * Sampling method for image upscaling/downscaling.
+ *
+ * Only the two methods CSS can actually express are offered: 'none' (the
+ * browser's own resampling) and 'nearest-neighbor' (`image-rendering:
+ * pixelated`, useful for pixel art and hi-res scans). Averaging / bilinear /
+ * bicubic / lanczos3 were listed here but rendered identically to 'none',
+ * because `image-rendering` has no kernel selector — only pixelated vs
+ * smooth. They can come back as a real choice once the reader draws through
+ * a canvas/WebGL resampler (Mitchell-Netravali as the default, Lanczos3 as an
+ * explicit "sharp" option, since Lanczos rings around hard black lines).
  */
-export type ImageSmoothMethod =
-  | 'none'
-  | 'nearest-neighbor'
-  | 'averaging'
-  | 'bilinear'
-  | 'bicubic'
-  | 'lanczos3';
+export type ImageSmoothMethod = 'none' | 'nearest-neighbor';
 
 /**
  * Color behind the page in the viewer (the letterbox around the spread).

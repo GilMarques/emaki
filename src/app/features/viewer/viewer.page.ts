@@ -212,12 +212,6 @@ export class ViewerPage {
     return `translate(${this.panOffsetX()}px, ${this.panOffsetY()}px) scale(${s})`;
   });
 
-  /** Zoom percentage label, e.g. "100%". */
-  public readonly zoomLabel = computed(() => `${Math.round(this.bookstore.zoom() * 100)}%`);
-
-  /** Show the zoom label only when zoom deviates from the fit default. */
-  public readonly showZoomLabel = computed(() => Math.abs(this.bookstore.zoom() - 1) >= 0.01);
-
   /** Book-wide rendered page size — read from the mounted page-flip instance
    *  (set at mount from the book's fit), NOT the current page, so pan and
    *  magnifier geometry stay stable across page turns. */
@@ -1232,9 +1226,7 @@ function buildFilterString(filters: FilterSettings): string {
   if (filters.sepia.enabled && filters.sepia.value > 0) {
     parts.push(`sepia(${filters.sepia.value}%)`);
   }
-  if (filters.grain.enabled && filters.grain.value > 0) {
-    const jitter = 100 - filters.grain.value / 2;
-    parts.push(`brightness(${jitter.toFixed(0)}%)`);
-  }
+  // Grain is not a CSS filter: it renders as a noise overlay layer above the
+  // page (see AppComponent.grainOpacity), so it must not darken the image.
   return parts.length > 0 ? parts.join(' ') : 'none';
 }

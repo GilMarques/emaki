@@ -45,13 +45,14 @@ const SLIDER_ROWS: readonly SliderRow[] = [
   { key: 'grain', label: 'Grain', suffix: '%', icon: 'sparkles' },
 ];
 
+/**
+ * Only the two methods the renderer can actually apply. Everything else in the
+ * enum used to render identically to 'none' (CSS `image-rendering` has no
+ * kernel selector), which just made the picker look broken.
+ */
 const SMOOTH_OPTIONS: readonly SmoothOption[] = [
-  { value: 'none', label: 'None' },
-  { value: 'nearest-neighbor', label: 'Nearest neighbor' },
-  { value: 'averaging', label: 'Averaging' },
-  { value: 'bilinear', label: 'Bilinear' },
-  { value: 'bicubic', label: 'Bicubic' },
-  { value: 'lanczos3', label: 'Lanczos3' },
+  { value: 'none', label: 'Smooth' },
+  { value: 'nearest-neighbor', label: 'Nearest neighbour' },
 ];
 
 /**
@@ -122,11 +123,11 @@ const SMOOTH_OPTIONS: readonly SmoothOption[] = [
           md="resize-sharp"
         ></ion-icon>
         <ion-select
-          label="Image smooth"
+          label="Image rendering"
           [value]="imageSmoothMethod()"
           (ionChange)="onImageSmoothMethodChange($event)"
           interface="popover"
-          aria-label="Image smoothing method"
+          aria-label="Image rendering method"
           class="smooth-select"
         >
           @for (opt of smoothOptions; track opt.value) {
@@ -226,14 +227,7 @@ export class FiltersSettingsComponent {
   public onImageSmoothMethodChange(event: CustomEvent<{ value: ImageSmoothMethod | undefined }>): void {
     const v = event.detail.value;
     if (v === undefined) return;
-    if (
-      v === 'none' ||
-      v === 'nearest-neighbor' ||
-      v === 'averaging' ||
-      v === 'bilinear' ||
-      v === 'bicubic' ||
-      v === 'lanczos3'
-    ) {
+    if (v === 'none' || v === 'nearest-neighbor') {
       this.settings.setImageSmoothMethod(v);
     }
   }

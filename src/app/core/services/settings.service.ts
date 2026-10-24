@@ -237,7 +237,7 @@ export class SettingsService {
     const r = raw as { method?: unknown };
     const method = this.pickEnum(
       r.method,
-      ['none', 'nearest-neighbor', 'averaging', 'bilinear', 'bicubic', 'lanczos3'],
+      ['none', 'nearest-neighbor'],
       fallback.method,
     );
     return { method };
