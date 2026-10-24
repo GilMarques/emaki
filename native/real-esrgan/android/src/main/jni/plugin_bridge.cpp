@@ -23,6 +23,9 @@
 #include <memory>
 #include <mutex>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <vector>
 #include <android/log.h>
 
 #include "realsr.h"  // vendored RealSR class
@@ -129,11 +132,75 @@ static RealSR* acquireEngine(const std::string& param, const std::string& bin,
     return g_engine.get();
 }
 
+// Output size after the width cap is applied.
+static void cappedSize(int w, int h, int maxWidth, int* ow, int* oh) {
+    if (maxWidth > 0 && w > maxWidth) {
+        *ow = maxWidth;
+        *oh = (int)std::lround((double)h * maxWidth / (double)w);
+        if (*oh < 1) *oh = 1;
+    } else {
+        *ow = w;
+        *oh = h;
+    }
+}
+
+// Area-average downscale of an interleaved RGB8 buffer.
+//
+// Point sampling aliases badly when a detailed page shrinks, and manga line art
+// is exactly the content that shows it: hairlines turn into moiré. Averaging
+// every source pixel that falls inside a destination pixel keeps the result
+// clean, and costs one pass over the source.
+static void downscaleRgb(const unsigned char* src, int sw, int sh,
+                         unsigned char* dst, int dw, int dh) {
+    for (int y = 0; y < dh; y++) {
+        const int y0 = (int)((int64_t)y * sh / dh);
+        int y1 = (int)((int64_t)(y + 1) * sh / dh);
+        if (y1 <= y0) y1 = y0 + 1;
+        for (int x = 0; x < dw; x++) {
+            const int x0 = (int)((int64_t)x * sw / dw);
+            int x1 = (int)((int64_t)(x + 1) * sw / dw);
+            if (x1 <= x0) x1 = x0 + 1;
+            int r = 0, g = 0, b = 0, n = 0;
+            for (int sy = y0; sy < y1; sy++) {
+                const unsigned char* row = src + (size_t)sy * (size_t)sw * 3;
+                for (int sx = x0; sx < x1; sx++) {
+                    r += row[sx * 3 + 0];
+                    g += row[sx * 3 + 1];
+                    b += row[sx * 3 + 2];
+                    n++;
+                }
+            }
+            unsigned char* out = dst + ((size_t)y * (size_t)dw + x) * 3;
+            out[0] = (unsigned char)(r / n);
+            out[1] = (unsigned char)(g / n);
+            out[2] = (unsigned char)(b / n);
+        }
+    }
+}
+
+// Expand interleaved RGB8 into the RGBA byte order Android's ARGB_8888
+// bitmaps expect (R,G,B,A per pixel).
+static void writeRgba(const unsigned char* rgb, int w, int h, unsigned char* dst) {
+    const size_t n = (size_t)w * (size_t)h;
+    for (size_t i = 0; i < n; i++) {
+        dst[i * 4 + 0] = rgb[i * 3 + 0];
+        dst[i * 4 + 1] = rgb[i * 3 + 1];
+        dst[i * 4 + 2] = rgb[i * 3 + 2];
+        dst[i * 4 + 3] = 255;
+    }
+}
+
 // Run one page through the ncnn RealSR engine. Returns 0 on success, or a
 // negative code when cancelled. Throws std::runtime_error with a typed prefix
 // ("process-failed:", "cancelled:") for the Java layer.
-static int runRealSR(const std::string& src, const std::string& dst, RealSR* sr,
-                     int quality, int* outWidth, int* outHeight,
+//
+// The pixels are NOT encoded here: they are handed to Java as an RGBA buffer
+// so the platform encoder (Skia/libwebp) can write them. stb can only write
+// PNG/JPEG, and a baseline JPEG at the same perceptual quality costs ~40%
+// more bytes than WebP.
+static int runRealSR(const std::string& src, RealSR* sr, int maxWidth,
+                     unsigned char* rgbaOut, size_t rgbaCapacity,
+                     int* outWidth, int* outHeight,
                      std::atomic<bool>* cancel) {
     const double tStart = nowMs();
     int w = 0, h = 0, c = 0;
@@ -188,16 +255,33 @@ static int runRealSR(const std::string& src, const std::string& dst, RealSR* sr,
     // Save it directly — re-running out.to_pixels() would reinterpret that
     // buffer as planar float channels and produce a corrupted (black/red) image.
     //
-    // JPEG, not PNG: stb's PNG writer is a naive deflate that costs ~5.7 s and
-    // ~15 MB for a detailed 2400x3600 page, ~30 % of the whole job. JPEG is an
-    // order of magnitude faster and smaller. Note quality <= 90 makes stb
-    // subsample chroma (4:2:0); 91+ keeps 4:4:4 for colour pages.
-    if (stbi_write_jpg(dst.c_str(), ow, oh, 3, out.data, quality) == 0) {
-        LOGE("failed to encode %s", dst.c_str());
-        throw std::runtime_error("process-failed:failed to encode " + dst);
+    // Apply the width cap here, before the pixels cross into Java: the model's
+    // own output is 2× the source, which overshoots what any screen resolves
+    // (a 1080p tablet shows a page ~1200 px wide, ~1800 px at 1.5× zoom), so
+    // the extra pixels are pure disk cost. Shrinking here also keeps the
+    // buffer that crosses the bridge as small as possible.
+    std::vector<unsigned char> shrunk;
+    const unsigned char* outRgb = (const unsigned char*)out.data;
+    int cappedW = ow;
+    int cappedH = oh;
+    if (maxWidth > 0 && ow > maxWidth) {
+        cappedSize(ow, oh, maxWidth, &cappedW, &cappedH);
+        shrunk.resize((size_t)cappedW * cappedH * 3);
+        const double tScale = nowMs();
+        downscaleRgb(outRgb, ow, oh, shrunk.data(), cappedW, cappedH);
+        LOGI("downscaled %dx%d -> %dx%d in %.0fms", ow, oh, cappedW, cappedH, nowMs() - tScale);
+        outRgb = shrunk.data();
     }
-    LOGI("encoded %s (q=%d) in %.0fms (page total %.0fms)",
-         dst.c_str(), quality, nowMs() - tEnc, nowMs() - tStart);
+
+    const size_t need = (size_t)cappedW * cappedH * 4;
+    if (rgbaOut == nullptr || rgbaCapacity < need) {
+        throw std::runtime_error("process-failed:output buffer too small");
+    }
+    writeRgba(outRgb, cappedW, cappedH, rgbaOut);
+    *outWidth = cappedW;
+    *outHeight = cappedH;
+    LOGI("pixels ready %dx%d in %.0fms (page total %.0fms)",
+         cappedW, cappedH, nowMs() - tEnc, nowMs() - tStart);
     return 0;
 }
 
@@ -216,16 +300,47 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeGetCapabilities(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_openviewer_realesrgan_RealEsrganPlugin_nativePlan(
+    JNIEnv* env, jobject /*thiz*/,
+    jstring sourcePath, jint scale, jint maxWidth) {
+
+    const char* srcC = env->GetStringUTFChars(sourcePath, nullptr);
+    int w = 0, h = 0, c = 0;
+    // stbi_info reads the image header only — no pixel work at all.
+    const int ok = stbi_info(srcC, &w, &h, &c);
+    env->ReleaseStringUTFChars(sourcePath, srcC);
+    if (!ok || w <= 0 || h <= 0) {
+        jclass ex = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(ex, "invalid-source:cannot read image header");
+        return nullptr;
+    }
+    int ow = 0, oh = 0;
+    cappedSize(w * scale, h * scale, maxWidth, &ow, &oh);
+    std::string json = "{\"width\":" + std::to_string(ow) +
+                       ",\"height\":" + std::to_string(oh) + "}";
+    return env->NewStringUTF(json.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
     JNIEnv* env, jobject /*thiz*/,
-    jstring modelDir, jstring sourcePath, jstring destinationPath,
-    jint scale, jstring model, jint tileSize, jint denoise, jint quality, jstring jobId) {
+    jstring modelDir, jstring sourcePath,
+    jint scale, jstring model, jint tileSize, jint denoise, jstring jobId,
+    jint maxWidth, jobject buffer) {
 
     const char* modelDirC = env->GetStringUTFChars(modelDir, nullptr);
     const char* srcC = env->GetStringUTFChars(sourcePath, nullptr);
-    const char* dstC = env->GetStringUTFChars(destinationPath, nullptr);
     const char* modelC = env->GetStringUTFChars(model, nullptr);
     const char* jobC = env->GetStringUTFChars(jobId, nullptr);
+
+    // The caller allocates a direct buffer sized for the capped output; the
+    // pixels are written straight into it, so nothing is copied twice.
+    unsigned char* rgbaOut = nullptr;
+    size_t rgbaCapacity = 0;
+    if (buffer != nullptr) {
+        rgbaOut = (unsigned char*)env->GetDirectBufferAddress(buffer);
+        rgbaCapacity = (size_t)env->GetDirectBufferCapacity(buffer);
+    }
 
     std::string errKind = "unknown";
     std::string errMsg;
@@ -254,8 +369,7 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
             throw std::runtime_error("unknown model: " + std::string(modelC));
         }
         const int tile = resolveTileSize(tileSize);
-        const int q = quality < 1 ? 1 : (quality > 100 ? 100 : quality);
-        LOGI("model paths: %s / %s (tile=%d quality=%d)", param.c_str(), bin.c_str(), tile, q);
+        LOGI("model paths: %s / %s (tile=%d maxWidth=%d)", param.c_str(), bin.c_str(), tile, maxWidth);
 
         std::atomic<bool>* cancelled = jobFlag(jobC);
         cancelled->store(false);
@@ -274,16 +388,13 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
         sr->tilesize = tile;
         sr->prepadding = 0;
 
-        int rc = runRealSR(srcC, dstC, sr, q, &outW, &outH, cancelled);
+        int rc = runRealSR(srcC, sr, maxWidth, rgbaOut, rgbaCapacity, &outW, &outH, cancelled);
         if (rc < 0) {
-            // Cancelled: remove any partial destination and report cancellation.
-            std::remove(dstC);
             errKind = "cancelled";
             throw std::runtime_error("cancelled");
         }
 
-        result = "{\"destinationUri\":\"" + std::string(dstC) + "\","
-                 "\"width\":" + std::to_string(outW) + ","
+        result = "{\"width\":" + std::to_string(outW) + ","
                  "\"height\":" + std::to_string(outH) + ","
                  "\"model\":\"" + std::string(modelC) + "\","
                  "\"scale\":" + std::to_string(scale) + "}";
@@ -295,7 +406,6 @@ Java_com_openviewer_realesrgan_RealEsrganPlugin_nativeEnhancePage(
 
     env->ReleaseStringUTFChars(modelDir, modelDirC);
     env->ReleaseStringUTFChars(sourcePath, srcC);
-    env->ReleaseStringUTFChars(destinationPath, dstC);
     env->ReleaseStringUTFChars(model, modelC);
     env->ReleaseStringUTFChars(jobId, jobC);
 

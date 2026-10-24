@@ -43,6 +43,7 @@ export function cacheKeyString(key: EnhancementCacheKey): string {
     `s${key.scale}`,
     `d${key.denoise}`,
     `q${key.outputQuality}`,
+    `w${key.maxOutputWidth}`,
   ].join('~');
 }
 
@@ -63,9 +64,9 @@ export class PageAssetService {
   /** Build the destination URI for a derivative. On native this resolves to a
    *  real app-owned file; in web it is a logical identifier (never persisted).
    *
-   *  Native (Capacitor/Android) derivatives are JPEG: the encoder measures an
-   *  order of magnitude faster and ~20× smaller than stb's PNG writer. Desktop
-   *  (Tauri/ONNX) still writes PNG.
+   *  Native (Capacitor/Android) derivatives are WebP: the platform encoder
+   *  writes about half the bytes of a baseline JPEG at the same perceptual
+   *  quality. Desktop (Tauri/ONNX) still writes PNG.
    *
    *  On Tauri/desktop (not a Capacitor native platform) we write a REAL sibling
    *  file in a `.enhanced` subfolder next to the source so the very same
@@ -73,7 +74,7 @@ export class PageAssetService {
    *  upscaled page to the canvas. The cache key is hashed into a safe filename
    *  because book ids contain `/` and `:`. */
   public buildDestinationUri(key: EnhancementCacheKey, sourceUrl = ''): string {
-    const extension = Capacitor.isNativePlatform() ? '.jpg' : '.png';
+    const extension = Capacitor.isNativePlatform() ? '.webp' : '.png';
     const filename = `${filenameHash(cacheKeyString(key))}${extension}`;
     if (Capacitor.isNativePlatform()) {
       return `${ENHANCED_DIR}/${filename}`;
@@ -98,7 +99,7 @@ export class PageAssetService {
     if (this.memory.has(uri)) return true;
     if (!Capacitor.isNativePlatform()) return false;
     try {
-      await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
+      await Filesystem.stat({ path: await this.relativeToCache(uri), directory: NATIVE_DIRECTORY });
       return true;
     } catch {
       return false;
@@ -110,10 +111,35 @@ export class PageAssetService {
     this.memory.delete(uri);
     if (!Capacitor.isNativePlatform()) return;
     try {
-      await Filesystem.deleteFile({ path: uri, directory: NATIVE_DIRECTORY });
+      await Filesystem.deleteFile({
+        path: await this.relativeToCache(uri),
+        directory: NATIVE_DIRECTORY,
+      });
     } catch {
       // Already gone or inaccessible — ignore.
     }
+  }
+
+  /**
+   * Map a derivative URI onto a path relative to the cache directory.
+   *
+   * The native plugin hands back an ABSOLUTE path (`/data/user/0/<pkg>/cache/
+   * enhanced/x.webp`) because the reader streams it straight off disk through
+   * Capacitor's file server — reading those bytes through the bridge instead
+   * would base64 a multi-megabyte page into the WebView heap. The Filesystem
+   * plugin, on the other hand, resolves paths RELATIVE to the requested
+   * directory, so an absolute path was silently joined onto the cache dir and
+   * every stat/delete failed — which is why derivatives could never be
+   * removed from disk.
+   */
+  private async relativeToCache(uri: string): Promise<string> {
+    if (!uri.startsWith('/')) return uri;
+    // Every derivative lives in `<cache>/enhanced/`, so the file name after the
+    // last `enhanced/` segment is the path the Filesystem plugin expects.
+    const marker = `/${ENHANCED_DIR}/`;
+    const at = uri.lastIndexOf(marker);
+    if (at >= 0) return uri.slice(at + marker.length);
+    return uri;
   }
 
   /**
@@ -128,9 +154,12 @@ export class PageAssetService {
     }
     let removed = 0;
     let used = 0;
+    const paths = new Map<string, string>();
     for (const uri of uris) {
+      const path = await this.relativeToCache(uri);
+      paths.set(uri, path);
       try {
-        const stat = await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
+        const stat = await Filesystem.stat({ path, directory: NATIVE_DIRECTORY });
         used += stat.size ?? 0;
       } catch {
         continue;
@@ -139,9 +168,11 @@ export class PageAssetService {
     if (used <= budgetBytes) return 0;
     for (const uri of uris) {
       if (used <= budgetBytes) break;
+      const path = paths.get(uri);
+      if (path === undefined) continue;
       try {
-        const stat = await Filesystem.stat({ path: uri, directory: NATIVE_DIRECTORY });
-        await Filesystem.deleteFile({ path: uri, directory: NATIVE_DIRECTORY });
+        const stat = await Filesystem.stat({ path, directory: NATIVE_DIRECTORY });
+        await Filesystem.deleteFile({ path, directory: NATIVE_DIRECTORY });
         used -= stat.size ?? 0;
         removed++;
       } catch {

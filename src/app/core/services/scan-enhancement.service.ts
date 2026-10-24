@@ -335,6 +335,15 @@ export class ScanEnhancementService {
     this._revision.update((r) => r + 1);
   }
 
+  /** Queue a single derivative for disposal. The file is deleted once the book
+   *  is confirmed unused — see {@link gc}. */
+  private queueForGc(bookId: string, uri: string): void {
+    const queued = this._gcQueue.get(bookId) ?? [];
+    if (queued.includes(uri)) return;
+    this._gcQueue.set(bookId, [...queued, uri]);
+    this.gc();
+  }
+
   /** Collect every on-disk derivative URI for a book (in-memory or persisted). */
   private collectDerivativeUris(bookId: string): string[] {
     const out = new Set<string>();
@@ -448,7 +457,8 @@ export class ScanEnhancementService {
       prev.model !== next.model ||
       prev.scale !== next.scale ||
       prev.denoise !== next.denoise ||
-      prev.outputQuality !== next.outputQuality;
+      prev.outputQuality !== next.outputQuality ||
+      prev.maxOutputWidth !== next.maxOutputWidth;
     this._settings.set(next);
 
     const id = this._displayedBookId();
@@ -654,6 +664,7 @@ export class ScanEnhancementService {
       scale: settings.scale,
       denoise: settings.denoise,
       outputQuality: settings.outputQuality,
+      maxOutputWidth: settings.maxOutputWidth,
     };
     const cacheKey = cacheKeyString(key);
     const destinationUri = this.assets.buildDestinationUri(key, page.url);
@@ -675,6 +686,10 @@ export class ScanEnhancementService {
 
     const jobId = `job-${++job.jobCounter}`;
 
+    // A page re-enhanced with different settings (or a different format) leaves
+    // the previous derivative behind. Remember it so it can be reclaimed.
+    const supersededUri = job.state.get(target.index)?.enhancedUri ?? null;
+
     job.currentJob = { jobId, index: target.index, cacheKey };
     this._activeSlot = { bookId: job.bookId, jobId };
     this.setJobStatus(job, target.index, 'processing', { enhancedUri: null, cacheKey, sourceHash, error: null });
@@ -689,6 +704,7 @@ export class ScanEnhancementService {
         tileSize: TILE_SIZE,
         denoise: settings.denoise,
         outputQuality: settings.outputQuality,
+        maxOutputWidth: settings.maxOutputWidth,
         jobId,
       });
       // Reject stale / wrong-book completions.
@@ -696,6 +712,9 @@ export class ScanEnhancementService {
       this._activeSlot = null;
       job.currentJob = null;
       await this.assets.markExists(result.destinationUri);
+      if (supersededUri !== null && supersededUri !== result.destinationUri) {
+        this.queueForGc(job.bookId, supersededUri);
+      }
       this.setJobStatus(job, target.index, 'complete', {
         enhancedUri: result.destinationUri,
         cacheKey,
@@ -758,6 +777,7 @@ export class ScanEnhancementService {
         scale: job.settings.scale,
         denoise: job.settings.denoise,
         outputQuality: job.settings.outputQuality,
+        maxOutputWidth: job.settings.maxOutputWidth,
       };
       rebuilt.set(i, {
         index: i,
@@ -941,6 +961,7 @@ export class ScanEnhancementService {
             scale: storedSettings.scale,
             denoise: storedSettings.denoise,
             outputQuality: storedSettings.outputQuality,
+            maxOutputWidth: storedSettings.maxOutputWidth,
           };
           map.set(i, {
             index: i,
@@ -975,6 +996,7 @@ export class ScanEnhancementService {
         scale: settings.scale,
         denoise: settings.denoise,
         outputQuality: settings.outputQuality,
+        maxOutputWidth: settings.maxOutputWidth,
       };
       map.set(i, {
         index: i,

@@ -17,6 +17,11 @@ export interface EnhancePageArgs {
   readonly denoise: number;
   /** Output encode quality (0..100) for the lossy derivative format. */
   readonly outputQuality: number;
+  /**
+   * Hard cap on the derivative's width in pixels (0 = no cap). The backend
+   * downscales the model output to this width before encoding it.
+   */
+  readonly maxOutputWidth: number;
   /** Opaque id so the caller can cancel an in-flight job. */
   readonly jobId: string;
 }

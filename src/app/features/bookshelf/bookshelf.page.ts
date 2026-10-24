@@ -32,6 +32,14 @@ import { ScannerService } from '../../core/services/scanner.service';
 import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { ShelfService } from '../../core/services/shelf.service';
 
+/**
+ * Multiplier applied to the source page bytes to estimate the size of the
+ * enhanced derivatives. Measured on real scans: a capped WebP derivative
+ * lands at about twice the source JPEG's size (up to 4× the pixels, but ~0.44×
+ * the bytes per pixel).
+ */
+const DERIVATIVE_SIZE_RATIO = 2;
+
 @Component({
   selector: 'ov-bookshelf',
   standalone: true,
@@ -377,14 +385,18 @@ export class BookshelfPage {
   }
 
   /**
-   * Roughly predict how much disk the enhanced derivatives will take: the sum
-   * of the source page sizes grown by the output pixel ratio (scale²). PNG
-   * output is lossless, so real sizes land in that ballpark. The estimate is
-   * omitted when page sizes can't be stat'ed (e.g. preset books).
+   * Roughly predict how much disk the enhanced derivatives will take.
+   *
+   * The pipeline writes a WebP derivative capped at `maxOutputWidth` pixels
+   * wide. Measured on real scans, the capped WebP derivative lands at roughly
+   * twice the source JPEG's size: it carries up to 4× the pixels (the model's
+   * 2× upscale) but WebP q82 needs only ~0.44× the bytes per pixel that the
+   * source JPEG did. Sources whose 2× output exceeds the cap land lower.
+   * The estimate is omitted when page sizes can't be stat'ed (e.g. preset
+   * books).
    */
   private async predictAlertSize(folder: FsFolder): Promise<void> {
     this.alertEstimating.set(true);
-    const scale = this.enhance.settings().scale;
     const books = this.isBookFolder(folder)
       ? (this.shelf.byId(folder.id) === undefined ? [] : [this.shelf.byId(folder.id)!])
       : this.collectBooks(folder);
@@ -399,7 +411,7 @@ export class BookshelfPage {
     for (const size of sizes) {
       if (size !== null && size > 0) bytes += size;
     }
-    this.alertSize.set(bytes <= 0 ? null : formatBytes(bytes * scale * scale));
+    this.alertSize.set(bytes <= 0 ? null : formatBytes(bytes * DERIVATIVE_SIZE_RATIO));
     this.alertEstimating.set(false);
   }
 

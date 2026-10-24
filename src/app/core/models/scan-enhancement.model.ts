@@ -29,6 +29,14 @@ export interface EnhancementSettings {
   readonly denoise: number;
   /** Output encode quality (0..100) for lossy formats. */
   readonly outputQuality: number;
+  /**
+   * Hard cap on the derivative's width in pixels (0 = no cap). The model's own
+   * output is 2× the source, which overshoots what any screen resolves: a
+   * 1080p tablet shows a page ~1200 px wide at fit and ~1800 px at 1.5× zoom,
+   * so 1800 is the point where extra pixels stop being readable but keep
+   * costing disk. Anything wider is downscaled before it is encoded.
+   */
+  readonly maxOutputWidth: number;
 }
 
 /** Lifecycle status of a single page's enhancement. */
@@ -81,6 +89,7 @@ export interface EnhancementCacheKey {
   readonly scale: 2 | 4;
   readonly denoise: number;
   readonly outputQuality: number;
+  readonly maxOutputWidth: number;
 }
 
 /** Backend reported by the native bridge. */
@@ -117,7 +126,10 @@ export const DEFAULT_ENHANCEMENT_SETTINGS: EnhancementSettings = {
   model: 'realesrgan-v2-anime-x2',
   scale: 2,
   denoise: 0,
-  outputQuality: 90,
+  // WebP quality. 82 keeps ~42 dB PSNR against the model output (on par with
+  // JPEG q85) while writing about half the bytes a baseline JPEG q90 needs.
+  outputQuality: 82,
+  maxOutputWidth: 1800,
 };
 
 export function isComplete(state: EnhancementPageState | undefined): boolean {

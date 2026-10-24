@@ -66,6 +66,7 @@ describe('RealEsrganPluginService (backend selection)', () => {
       tileSize: 0,
       denoise: 0,
       outputQuality: 90,
+      maxOutputWidth: 1800,
       jobId: 'j1',
     });
     expect(tauri.calls).toContain('enhancePage');

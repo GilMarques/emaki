@@ -8,13 +8,19 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.net.Uri;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Capacitor bridge for the local ncnn upscaler. The heavy lifting lives in
@@ -35,18 +41,29 @@ public class RealEsrganPlugin extends Plugin {
     // they cross the JNI boundary.
     private native String nativeGetCapabilities();
 
+    private native boolean nativeCancelPage(String jobId);
+
+    /**
+     * Size of the enhanced page, before any pixel work: reads the source image
+     * header and applies the width cap. Returns {@code {"width":W,"height":H}}.
+     */
+    private native String nativePlan(String sourcePath, int scale, int maxWidth);
+
+    /**
+     * Run the model over a page and write the (capped) pixels into
+     * {@code outBuffer} as RGBA. The buffer is allocated by the caller so the
+     * pixels cross the bridge exactly once; encoding happens on the Java side.
+     */
     private native String nativeEnhancePage(
             String modelDir,
             String sourcePath,
-            String destinationPath,
             int scale,
             String model,
             int tileSize,
             int denoise,
-            int quality,
-            String jobId);
-
-    private native boolean nativeCancelPage(String jobId);
+            String jobId,
+            int maxWidth,
+            ByteBuffer outBuffer);
 
     @PluginMethod
     public void getCapabilities(PluginCall call) {
@@ -70,11 +87,13 @@ public class RealEsrganPlugin extends Plugin {
         String model = call.getString("model", "realesrgan-v2-anime-x2");
         int tileSize = call.getInt("tileSize", 0);
         int denoise = call.getInt("denoise", 0);
-        int outputQuality = call.getInt("outputQuality", 90);
+        int outputQuality = call.getInt("outputQuality", 82);
+        int maxOutputWidth = call.getInt("maxOutputWidth", 0);
         String jobId = call.getString("jobId", "");
         Log.i(TAG, "enhancePage() source=" + sourceUri + " dest=" + destinationUri
                 + " scale=" + scale + " model=" + model + " tileSize=" + tileSize
-                + " denoise=" + denoise + " outputQuality=" + outputQuality);
+                + " denoise=" + denoise + " outputQuality=" + outputQuality
+                + " maxOutputWidth=" + maxOutputWidth);
 
         if (sourceUri.isEmpty() || destinationUri.isEmpty() || jobId.isEmpty()) {
             Log.e(TAG, "enhancePage() invalid_args (missing required arg)");
@@ -98,10 +117,45 @@ public class RealEsrganPlugin extends Plugin {
         try {
             String modelDir = ensureModelsDir();
             Log.i(TAG, "enhancePage() modelDir=" + modelDir);
+
+            // Plan first: the size of the (capped) output decides how big the
+            // pixel buffer has to be, and reading the source header is nearly
+            // free compared to the inference that follows.
+            String plan = nativePlan(srcPath, scale, maxOutputWidth);
+            final int width = jsonInt(plan, "width");
+            final int height = jsonInt(plan, "height");
+            if (width <= 0 || height <= 0) {
+                call.reject("invalid_source", "Could not determine the output size of " + sourceUri);
+                return;
+            }
+            Log.i(TAG, "enhancePage() plan -> " + width + "x" + height);
+
+            // One direct buffer, written by the native side and read by the
+            // bitmap below — the pixels are never copied twice.
+            ByteBuffer pixels = ByteBuffer
+                    .allocateDirect(width * height * 4)
+                    .order(ByteOrder.nativeOrder());
+
             Log.i(TAG, "enhancePage() calling nativeEnhancePage");
-            String json = nativeEnhancePage(modelDir, srcPath, dstPath, scale, model, tileSize, denoise, outputQuality, jobId);
+            String json = nativeEnhancePage(modelDir, srcPath, scale, model, tileSize,
+                    denoise, jobId, maxOutputWidth, pixels);
             Log.i(TAG, "enhancePage() native done -> " + json + " (" + ms(t0) + "ms total)");
-            call.resolve(new JSObject(json));
+
+            pixels.position(0);
+            pixels.limit(width * height * 4);
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            bitmap.copyPixelsFromBuffer(pixels);
+            try (OutputStream out = new FileOutputStream(dstPath)) {
+                encodeWebp(bitmap, outputQuality, out);
+            } finally {
+                bitmap.recycle();
+            }
+            Log.i(TAG, "enhancePage() wrote " + dstPath + " ("
+                    + new File(dstPath).length() + " bytes, " + ms(t0) + "ms total)");
+
+            JSObject result = new JSObject(json);
+            result.put("destinationUri", dstPath);
+            call.resolve(result);
         } catch (Throwable e) {
             Log.e(TAG, "enhancePage() FAILED after " + ms(t0) + "ms: " + e.getMessage(), e);
             call.reject(e.getMessage());
@@ -215,6 +269,38 @@ public class RealEsrganPlugin extends Plugin {
     }
 
     /**
+     * Encode a bitmap as WebP with the platform encoder (Skia → libwebp).
+     *
+     * WebP costs ~40% fewer bytes than a baseline JPEG at the same perceptual
+     * quality on these pages, which is the whole point of the derivative
+     * store. The decode side is ~3× slower than JPEG, but the reader decodes
+     * pages in the background while they are being prefetched.
+     */
+    private void encodeWebp(Bitmap bitmap, int quality, OutputStream out) throws IOException {
+        int q = Math.max(1, Math.min(100, quality));
+        boolean ok;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: WEBP_LOSSY maps onto libwebp's lossy encoder.
+            ok = bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, q, out);
+        } else {
+            // Before Android 11 the platform encoder only exposed WEBP.
+            ok = bitmap.compress(Bitmap.CompressFormat.WEBP, q, out);
+        }
+        if (!ok) {
+            throw new IOException("webp encode failed");
+        }
+    }
+
+    /** Read an integer out of the small JSON blobs the native side returns. */
+    private static int jsonInt(String json, String key) {
+        try {
+            return new org.json.JSONObject(json).optInt(key, 0);
+        } catch (Throwable e) {
+            return 0;
+        }
+    }
+
+    /**
      * Resolve a SOURCE URI to a path ncnn can read. `file://` → strip scheme;
      * `content://` (Android scoped storage / SAF) → copy to the app cache and
      * return that path, because ncnn needs a real fd/path and cannot open a
@@ -237,10 +323,11 @@ public class RealEsrganPlugin extends Plugin {
 
     /**
      * Resolve a DESTINATION URI to a real file path under the app cache. The TS
-     * layer passes `enhanced/<hash>.jpg` (or `enhanced://<hash>.jpg`); we place
-     * the derivative in `<cache>/enhanced/<hash>.jpg` so it is readable by the
-     * reader's file resolver and is cleared with the app cache. The extension is
-     * whatever the TS layer chose — the native encoder writes JPEG.
+     * layer passes `enhanced/<hash>.webp` (or `enhanced://<hash>.webp`); we
+     * place the derivative in `<cache>/enhanced/<hash>.webp` so it is readable
+     * by the reader's file resolver and is cleared with the app cache. The
+     * extension is whatever the TS layer chose — the platform encoder writes
+     * WebP.
      */
     private String resolveDestinationPath(String uri) {
         if (uri == null) return null;
