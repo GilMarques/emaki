@@ -55,6 +55,16 @@ device (sideloading needs "install unknown apps" permission). Installing a
 newer version over an older one keeps the app data; a downgrade requires
 uninstalling first.
 
+Two things to know about the app identity:
+
+- The app id is `com.openviewer.emaki` (it used to be the Capacitor default
+  `io.ionic.starter`). An APK from this pipeline is a different app than the
+  one installed under the old id, so uninstall that one first.
+- Release APKs are signed with the release key; `npx cap run android` builds
+  a debug APK signed with the debug key. Android refuses to replace one with
+  the other, so uninstall the debug build before installing a release build
+  (and the other way round).
+
 ## Local builds
 
 ```bash
