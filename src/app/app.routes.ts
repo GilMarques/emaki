@@ -14,6 +14,11 @@ export const APP_ROUTES: Routes = [
       import('./features/bookshelf/bookshelf.page').then((m) => m.BookshelfPage),
   },
   {
+    path: 'history',
+    loadComponent: () =>
+      import('./features/history/history.page').then((m) => m.HistoryPage),
+  },
+  {
     path: 'provider',
     loadComponent: () =>
       import('./features/provider/provider.page').then((m) => m.ProviderPage),
@@ -27,11 +32,6 @@ export const APP_ROUTES: Routes = [
     path: 'provider/:providerId/manga/:mangaId',
     loadComponent: () =>
       import('./features/provider/chapters/chapters.page').then((m) => m.ProviderChaptersPage),
-  },
-  {
-    path: 'manager',
-    loadComponent: () =>
-      import('./features/manager/manager.page').then((m) => m.ManagerPage),
   },
   {
     path: 'settings',

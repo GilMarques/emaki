@@ -35,8 +35,16 @@ const STORAGE_KEY = 'emaki:downloads:v1';
 export class DownloadStore {
   private readonly native = Capacitor.isNativePlatform();
   private readonly _chapters = signal<ReadonlyMap<string, StoredChapter>>(new Map());
+  /**
+   * Absolute on-device data directory (e.g. `/data/user/0/<pkg>/files`),
+   * resolved once at startup. Needed because `Capacitor.convertFileSrc` only
+   * maps absolute paths / `file://` URIs to a loadable URL — a store-relative
+   * path is returned unchanged and 404s in the WebView.
+   */
+  private readonly _dataDir = signal<string | null>(null);
 
   public readonly chapters = this._chapters.asReadonly();
+  public readonly dataDir = this._dataDir.asReadonly();
 
   constructor() {
     void this.init();
@@ -60,6 +68,15 @@ export class DownloadStore {
   /** Alias: the path handed to the native downloader for a page. */
   public downloadDestination(providerId: string, chapterId: string, index: number): string {
     return this.pagePath(providerId, chapterId, index);
+  }
+
+  /**
+   * Absolute on-device path for a store-relative path (e.g. `emaki/...`),
+   * or null until the data directory has resolved on startup.
+   */
+  public absolutePath(relative: string): string | null {
+    const base = this._dataDir();
+    return base === null ? null : `${base}/${relative}`;
   }
 
   public get(providerId: string, chapterId: string): StoredChapter | undefined {
@@ -108,6 +125,14 @@ export class DownloadStore {
         await Filesystem.mkdir({ path: BASE_DIR, directory: Directory.Data, recursive: true });
       } catch {
         // already exists
+      }
+      // Resolve the absolute data dir so page/cover URLs can be built with
+      // Capacitor.convertFileSrc (which needs an absolute path on native).
+      try {
+        const { uri } = await Filesystem.getUri({ path: BASE_DIR, directory: Directory.Data });
+        this._dataDir.set(uri.replace(/^file:\/\//, '').replace(/\/emaki\/?$/, ''));
+      } catch {
+        // leave null — page URLs fall back to relative paths
       }
     }
     this._chapters.set(this.loadManifest());

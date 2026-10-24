@@ -10,13 +10,13 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonMenuButton,
   IonText,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
 
 import { ConnectorRegistryService } from '../../core/connectors/connector-registry.service';
+import { MenuButtonComponent } from '../../shared/menu-button.component';
 import { ProviderBrowseService } from '../../core/connectors/provider-browse.service';
 
 /**
@@ -38,10 +38,10 @@ import { ProviderBrowseService } from '../../core/connectors/provider-browse.ser
     IonItem,
     IonLabel,
     IonList,
-    IonMenuButton,
-    IonText,
+      IonText,
     IonTitle,
     IonToolbar,
+    MenuButtonComponent,
   ],
   templateUrl: './provider.page.html',
   styleUrls: ['./provider.page.scss'],

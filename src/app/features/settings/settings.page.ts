@@ -8,13 +8,13 @@ import {
   IonLabel,
   IonList,
   IonListHeader,
-  IonMenuButton,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
 
 import { DisplaySettingsComponent } from '../viewer/display-settings.component';
 import { FiltersSettingsComponent } from '../viewer/filters-settings.component';
+import { MenuButtonComponent } from '../../shared/menu-button.component';
 import { SettingsService } from '../../core/services/settings.service';
 
 /**
@@ -34,11 +34,11 @@ import { SettingsService } from '../../core/services/settings.service';
     IonLabel,
     IonList,
     IonListHeader,
-    IonMenuButton,
-    IonTitle,
+      IonTitle,
     IonToolbar,
     DisplaySettingsComponent,
     FiltersSettingsComponent,
+    MenuButtonComponent,
   ],
   templateUrl: './settings.page.html',
   styleUrls: ['./settings.page.scss'],

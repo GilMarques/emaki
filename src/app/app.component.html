@@ -1,52 +1,112 @@
 <ion-app>
-  <ion-menu content-id="main-content" type="overlay">
-    <ion-header>
-      <ion-toolbar color="primary">
-        <img
-          class="menu-logo"
-          slot="start"
-          src="assets/icon/favicon.png"
-          alt="Emaki logo"
-        />
-        <ion-title>Emaki</ion-title>
-      </ion-toolbar>
-    </ion-header>
-    <ion-content>
-      <ion-list lines="none">
-        <ion-menu-toggle>
-          <ion-item button routerLink="/library" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="library"></ion-icon>
-            <ion-label>Library</ion-label>
-          </ion-item>
-        </ion-menu-toggle>
-        <ion-menu-toggle>
-          <ion-item button routerLink="/provider" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="globe"></ion-icon>
-            <ion-label>Provider</ion-label>
-          </ion-item>
-        </ion-menu-toggle>
-        <ion-menu-toggle>
-          <ion-item button routerLink="/manager" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="list"></ion-icon>
-            <ion-label>Manager</ion-label>
-          </ion-item>
-        </ion-menu-toggle>
-      </ion-list>
-    </ion-content>
+  <ion-split-pane content-id="main-content" when="(min-width: 768px)">
+    <ion-menu
+      class="app-menu"
+      content-id="main-content"
+      type="overlay"
+      [class.collapsed]="menu.collapsed()"
+      [attr.inert]="menu.hidden() ? '' : null"
+    >
+      <ion-header>
+        <ion-toolbar color="primary">
+          <img
+            class="menu-logo"
+            slot="start"
+            src="assets/icon/favicon.png"
+            alt="Emaki logo"
+          />
+          <ion-title class="menu-title">Emaki</ion-title>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content>
+        <!-- autoHide=false keeps the items visible when the split pane docks
+             the menu: Ionic otherwise hides every toggle in split mode. -->
+        <ion-list lines="none">
+          <ion-menu-toggle [autoHide]="false">
+            <ion-item
+              button
+              routerLink="/library"
+              routerLinkActive="selected"
+              aria-label="Library"
+              title="Library"
+            >
+              <ion-icon aria-hidden="true" slot="start" name="library"></ion-icon>
+              <ion-label>Library</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+          <ion-menu-toggle [autoHide]="false">
+            <ion-item
+              button
+              routerLink="/history"
+              routerLinkActive="selected"
+              aria-label="History"
+              title="History"
+            >
+              <ion-icon aria-hidden="true" slot="start" name="time-outline"></ion-icon>
+              <ion-label>History</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+          <ion-menu-toggle [autoHide]="false">
+            <ion-item
+              button
+              routerLink="/provider"
+              routerLinkActive="selected"
+              aria-label="Provider"
+              title="Provider"
+            >
+              <ion-icon aria-hidden="true" slot="start" name="globe"></ion-icon>
+              <ion-label>Provider</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+        </ion-list>
 
-    <ion-footer>
-      <ion-list class="menu-bottom" lines="none">
-        <ion-menu-toggle>
-          <ion-item button routerLink="/settings" routerLinkActive="selected">
-            <ion-icon aria-hidden="true" slot="start" name="settings"></ion-icon>
-            <ion-label>Settings</ion-label>
-          </ion-item>
-        </ion-menu-toggle>
-      </ion-list>
-    </ion-footer>
-  </ion-menu>
+        @if (downloads().length > 0) {
+          <div class="menu-section">
+            <div class="menu-section-title">Downloads</div>
+            <ion-list lines="none" class="menu-tasks">
+              @for (task of downloads(); track task.id) {
+                <ion-item class="task-item">
+                  <ion-icon aria-hidden="true" slot="start" name="download-outline"></ion-icon>
+                  <ion-label>
+                    <h3>{{ task.title }}</h3>
+                    <p>{{ downloadDetail(task) }}</p>
+                  </ion-label>
+                  @if (task.status === 'queued' || task.status === 'processing') {
+                    <ion-spinner slot="end" name="crescent"></ion-spinner>
+                  } @else if (task.status === 'done') {
+                    <ion-icon slot="end" color="success" name="checkmark-circle"></ion-icon>
+                  } @else if (task.status === 'error') {
+                    <ion-icon slot="end" color="danger" name="alert-circle"></ion-icon>
+                  }
+                </ion-item>
+              }
+            </ion-list>
+          </div>
+        }
+      </ion-content>
 
-  <ion-router-outlet id="main-content"></ion-router-outlet>
+      <ion-footer>
+        <ion-list class="menu-bottom" lines="none">
+          <ion-menu-toggle [autoHide]="false">
+            <ion-item
+              button
+              routerLink="/settings"
+              routerLinkActive="selected"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <ion-icon aria-hidden="true" slot="start" name="settings"></ion-icon>
+              <ion-label>Settings</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+        </ion-list>
+      </ion-footer>
+    </ion-menu>
+
+    <div class="ion-page" id="main-content">
+      <ion-router-outlet></ion-router-outlet>
+    </div>
+  </ion-split-pane>
 
   <ion-modal
     class="reader-sheet"
@@ -54,9 +114,8 @@
     [breakpoints]="[0, 1]"
     [initialBreakpoint]="1"
     handle="visible"
-    swipeToClose="true"
     [canDismiss]="true"
-    (didDismiss)="closeReader()"
+    (didDismiss)="onReaderDismissed()"
   >
     <ng-template>
       <ov-viewer />

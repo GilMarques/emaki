@@ -1,41 +1,60 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar class="lib-bar">
     <ion-buttons slot="start">
-      <ion-menu-button></ion-menu-button>
+      <ov-menu-button></ov-menu-button>
     </ion-buttons>
-    <ion-title class="crumbs">
-      <span
-        class="title-text"
-        [class.clickable]="canGoUp()"
-        role="button"
-        tabindex="0"
-        (click)="canGoUp() && goUp()"
-        (keyup.enter)="canGoUp() && goUp()"
-        aria-label="Go up one folder"
-      >@if (canGoUp()) {
-        <ion-icon name="arrow-up-outline"></ion-icon>
-      }{{ titlePath() }}</span>
+
+    <ion-title class="lib-title">
+      <div class="title-row">
+        <span class="title-text">{{ titleText() }}</span>
+        @if (canGoUp()) {
+          <button type="button" class="up-btn" (click)="goUp()" aria-label="Up one folder">
+            <ion-icon name="arrow-up-outline"></ion-icon>
+          </button>
+        }
+      </div>
     </ion-title>
-    @if (showFiles()) {
-      <ion-buttons slot="end">
-        <ion-button
-          class="open-btn"
-          shape="round"
-          size="small"
-          (click)="openFolder()"
-          aria-label="Select a folder from disk"
-        >
-          <ion-icon slot="start" name="folder-open-outline"></ion-icon>
-          Select
+
+    <ion-buttons slot="end" class="bar-actions">
+      <ion-button
+        class="bar-icon"
+        [class.active]="searchOpen()"
+        (click)="toggleSearch()"
+        [attr.aria-label]="searchOpen() ? 'Close search' : 'Search library'"
+      >
+        <ion-icon slot="icon-only" [name]="searchOpen() ? 'close-outline' : 'search-outline'"></ion-icon>
+      </ion-button>
+      @if (showFiles() && !canGoUp()) {
+        <ion-button class="bar-icon" (click)="openFolder()" aria-label="Choose library folder">
+          <ion-icon slot="icon-only" name="folder-open-outline"></ion-icon>
         </ion-button>
-      </ion-buttons>
-    }
+      }
+      <ion-button class="bar-icon" (click)="settingsOpen.set(true)" aria-label="Display and filters">
+        <ion-icon slot="icon-only" name="options-outline"></ion-icon>
+      </ion-button>
+      <ion-button class="bar-icon" (click)="scan()" [disabled]="scanning()" aria-label="Rescan library">
+        <ion-icon slot="icon-only" name="refresh-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
+
+  @if (searchOpen()) {
+    <ion-toolbar class="search-bar">
+      <ion-searchbar
+        [value]="query()"
+        (ionInput)="onSearchInput($event)"
+        (ionSearch)="onSearchInput($event)"
+        [debounce]="150"
+        placeholder="Search library"
+        enterkeyhint="search"
+        aria-label="Search library"
+      ></ion-searchbar>
+    </ion-toolbar>
+  }
 </ion-header>
 
 <ion-content>
-
-  @if (scanning()) {
+  @if (scanning() && children().length === 0) {
     <div class="status">
       <ion-spinner name="dots"></ion-spinner>
       <ion-text>Scanning… {{ booksFound() }}</ion-text>
@@ -45,172 +64,128 @@
       <h2>No library yet</h2>
       <p>Tap Scan to register the preset books bundled with the app.</p>
     </div>
-  } @else if (children().length === 0) {
+  } @else if (visibleChildren().length === 0) {
     <div class="placeholder">
-      <h2>Empty folder</h2>
-      <p>This folder has no subfolders or books.</p>
+      @if (query().trim().length > 0) {
+        <h2>No matches</h2>
+        <p>Nothing here matches “{{ query().trim() }}”.</p>
+      } @else {
+        <h2>Empty folder</h2>
+        <p>This folder has no subfolders or books.</p>
+      }
     </div>
   } @else {
-    <ion-grid class="shelf">
-      <ion-row>
-        @for (child of children(); track child.id) {
-          <ion-col size="6" size-sm="4" size-md="3" size-lg="2">
-            <div
-              class="tile"
-              role="button"
-              tabindex="0"
-              (click)="onTileClick(child)"
-              (keyup.enter)="onTileClick(child)"
-            >
-              @if (showCover(child)) {
-                <div class="thumb">
-                  <ion-img class="cover" [src]="coverFor(child)" [alt]="child.name"></ion-img>
-                  <ion-button
-                    class="enhance-btn"
-                    [class.enhanced]="isEnhanced(child)"
-                    shape="round"
-                    fill="solid"
-                    aria-label="Enhance"
-                    (click)="$event.stopPropagation(); openEnhanceAlert(child)"
-                    (keyup.enter)="$event.stopPropagation(); openEnhanceAlert(child)"
-                  >
-                    <ion-icon slot="icon-only" name="sparkles"></ion-icon>
-                  </ion-button>
-                </div>
-              } @else if (coversFor(child).length > 0) {
-                <div class="cover-stack">
-                  @for (c of coversFor(child); track c; let i = $index) {
-                    <ion-img class="stack-img" [src]="c" [alt]="child.name"></ion-img>
-                  }
-                </div>
-              } @else {
-                <ion-icon class="folder" name="folder"></ion-icon>
-              }
-              @if (isEnhancing(child)) {
-                <ion-spinner
-                  class="enhancing-spinner"
-                  name="circular"
-                  aria-label="Enhancing"
-                ></ion-spinner>
-              }
-              @if (progressFor(child) !== null) {
-                <div
-                  class="progress"
-                  role="progressbar"
-                  [attr.aria-valuenow]="progressFor(child)!"
-                  aria-valuemin="0"
-                  aria-valuemax="1"
-                  aria-label="Read progress"
-                >
-                  <div class="progress-fill" [style.width.%]="progressFor(child)! * 100"></div>
-                </div>
-              }
-              <div class="tile-name">{{ child.name }}</div>
+    <div class="grid">
+      @for (child of visibleChildren(); track child.id) {
+        <div
+          class="tile"
+          role="button"
+          tabindex="0"
+          [attr.aria-label]="child.name + ' — ' + metaFor(child)"
+          (click)="onTileClick(child)"
+          (keyup.enter)="onTileClick(child)"
+        >
+          @if (coverUrlFor(child); as cover) {
+            <ion-img class="cover" [src]="cover" [alt]="child.name"></ion-img>
+          } @else {
+            <div class="empty-art">
+              <ion-icon [name]="child.isBook ? 'book-outline' : 'folder-outline'"></ion-icon>
             </div>
-          </ion-col>
-        }
+          }
 
-        <ion-alert
-          [isOpen]="alertOpen()"
-          [header]="alertHeader()"
-          [message]="alertMessage()"
-          [buttons]="alertButtons()"
-          (didDismiss)="onAlertDismiss($any($event).detail.role)"
-        ></ion-alert>
-      </ion-row>
-    </ion-grid>
+          <div class="shade"></div>
+
+          @if (isEnhancing(child)) {
+            <ion-spinner
+              class="enhancing-spinner"
+              name="circular"
+              aria-label="Enhancing"
+            ></ion-spinner>
+          }
+
+          <button
+            type="button"
+            class="enhance-btn"
+            [class.enhanced]="isEnhanced(child)"
+            (click)="$event.stopPropagation(); openEnhanceAlert(child)"
+            (keyup.enter)="$event.stopPropagation(); openEnhanceAlert(child)"
+            [attr.aria-label]="isEnhanced(child) ? 'Enhanced — manage' : 'Enhance scans'"
+          >
+            <ion-icon name="sparkles"></ion-icon>
+          </button>
+
+          <div class="label">
+            <span class="name">{{ child.name }}</span>
+            <span class="meta">{{ metaFor(child) }}</span>
+          </div>
+
+          @if (progressFor(child) !== null) {
+            <div
+              class="progress"
+              role="progressbar"
+              [attr.aria-valuenow]="progressFor(child)!"
+              aria-valuemin="0"
+              aria-valuemax="1"
+              aria-label="Read progress"
+            >
+              <div class="progress-fill" [style.width.%]="progressFor(child)! * 100"></div>
+            </div>
+          }
+        </div>
+      }
+    </div>
   }
 
-  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
-    <ion-fab-button (click)="fabOpen.set(!fabOpen())" aria-label="Library actions">
-      <ion-icon [name]="fabOpen() ? 'close' : 'ellipsis-horizontal'"></ion-icon>
-    </ion-fab-button>
-    <ion-fab-list side="top">
-      <ion-fab-button
-        title="Display"
-        (click)="displayOpen.set(true); fabOpen.set(false)"
-        aria-label="Display"
-      >
-        <ion-icon name="options"></ion-icon>
-      </ion-fab-button>
-      <ion-fab-button
-        title="Filters"
-        (click)="filtersOpen.set(true); fabOpen.set(false)"
-        aria-label="Filters"
-      >
-        <ion-icon name="color-filter"></ion-icon>
-      </ion-fab-button>
-      <ion-fab-button
-        title="Scan"
-        (click)="scan(); fabOpen.set(false)"
-        [disabled]="scanning()"
-        aria-label="Scan"
-      >
-        <ion-icon name="scan"></ion-icon>
-      </ion-fab-button>
-    </ion-fab-list>
-  </ion-fab>
+  <ion-alert
+    [isOpen]="alertOpen()"
+    [header]="alertHeader()"
+    [message]="alertMessage()"
+    [buttons]="alertButtons()"
+    (didDismiss)="onAlertDismiss($any($event).detail.role)"
+  ></ion-alert>
 
   <ion-modal
-    class="filters-sheet"
-    [isOpen]="filtersOpen()"
+    class="settings-sheet"
+    [isOpen]="settingsOpen()"
     [breakpoints]="[0, 0.9]"
     [initialBreakpoint]="0.9"
     handle="visible"
     swipeToClose="true"
     [canDismiss]="true"
-    (didDismiss)="filtersOpen.set(false)"
+    (didDismiss)="settingsOpen.set(false)"
   >
     <ng-template>
       <ion-header>
         <ion-toolbar>
           <ion-buttons slot="start">
-            <ion-button (click)="filtersOpen.set(false)" aria-label="Close">
+            <ion-button (click)="settingsOpen.set(false)" aria-label="Close">
               <ion-icon slot="icon-only" name="close"></ion-icon>
             </ion-button>
           </ion-buttons>
-          <ion-title class="ion-text-center">Filters</ion-title>
+          <ion-title class="ion-text-center">Display &amp; filters</ion-title>
           <ion-buttons slot="end">
-            <ion-button class="done-btn" (click)="filtersOpen.set(false)" aria-label="Done">
+            <ion-button class="done-btn" (click)="settingsOpen.set(false)" aria-label="Done">
               <ion-icon slot="icon-only" name="checkmark"></ion-icon>
             </ion-button>
           </ion-buttons>
         </ion-toolbar>
-      </ion-header>
-      <ion-content>
-        <ov-filters-settings />
-      </ion-content>
-    </ng-template>
-  </ion-modal>
-
-  <ion-modal
-    class="display-sheet"
-    [isOpen]="displayOpen()"
-    [breakpoints]="[0, 0.9]"
-    [initialBreakpoint]="0.9"
-    handle="visible"
-    swipeToClose="true"
-    [canDismiss]="true"
-    (didDismiss)="displayOpen.set(false)"
-  >
-    <ng-template>
-      <ion-header>
-        <ion-toolbar>
-          <ion-buttons slot="start">
-            <ion-button (click)="displayOpen.set(false)" aria-label="Close">
-              <ion-icon slot="icon-only" name="close"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-          <ion-title class="ion-text-center">Display</ion-title>
-          <ion-buttons slot="end">
-            <ion-button class="done-btn" (click)="displayOpen.set(false)" aria-label="Done">
-              <ion-icon slot="icon-only" name="checkmark"></ion-icon>
-            </ion-button>
-          </ion-buttons>
+        <ion-toolbar class="sheet-tabs">
+          <ion-segment [value]="settingsTab()" (ionChange)="onSettingsTabChange($event)">
+            <ion-segment-button value="display">
+              <ion-label>Display</ion-label>
+            </ion-segment-button>
+            <ion-segment-button value="filters">
+              <ion-label>Filters</ion-label>
+            </ion-segment-button>
+          </ion-segment>
         </ion-toolbar>
       </ion-header>
       <ion-content>
-        <ov-display-settings />
+        @if (settingsTab() === 'filters') {
+          <ov-filters-settings />
+        } @else {
+          <ov-display-settings />
+        }
       </ion-content>
     </ng-template>
   </ion-modal>
@@ -218,7 +193,6 @@
   <ion-toast
     [isOpen]="toastMessage() !== null"
     [message]="toastMessage() ?? ''"
-    [buttons]="toastButtons()"
     [duration]="5000"
     swipeGesture="vertical"
     position="bottom"

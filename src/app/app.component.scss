@@ -31,3 +31,66 @@ ion-menu ion-footer {
 ion-menu ion-footer ion-item {
   --background: var(--ion-background-color);
 }
+
+/* Active/recent downloads, capped at five, under the main menu links. */
+.menu-section {
+  padding-bottom: 8px;
+}
+
+.menu-section-title {
+  padding: 14px 16px 4px;
+  color: var(--ion-color-medium, #92949c);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.menu-tasks ion-item {
+  --min-height: 50px;
+}
+
+.menu-tasks ion-label h3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.menu-tasks ion-label p {
+  margin: 2px 0 0;
+  color: var(--ion-color-medium, #92949c);
+  font-size: 0.72rem;
+}
+
+.menu-tasks ion-spinner {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Responsive shell ──────────────────────────────────────────────────────
+   Below md the menu stays an overlay drawer opened from the page header.
+   From md up the split pane docks it at 280px; the header's menu button
+   collapses it completely, giving the content the full width back. */
+
+@media (min-width: 768px) {
+  ion-menu.app-menu {
+    --side-width: 280px;
+    --side-min-width: 280px;
+    --side-max-width: 280px;
+    overflow: hidden;
+    transition: width 180ms ease, min-width 180ms ease, max-width 180ms ease;
+  }
+
+  ion-menu.app-menu.collapsed {
+    --side-width: 0px;
+    --side-min-width: 0px;
+    --side-max-width: 0px;
+    /* The split pane's 1px separator would otherwise survive at zero width. */
+    border-inline-end: 0 !important;
+  }
+}

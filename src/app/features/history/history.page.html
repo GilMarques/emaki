@@ -1,0 +1,102 @@
+<ion-header>
+  <ion-toolbar class="history-bar">
+    <ion-buttons slot="start">
+      <ov-menu-button></ov-menu-button>
+    </ion-buttons>
+
+    <ion-title class="history-title">History</ion-title>
+
+    <ion-buttons slot="end" class="bar-actions">
+      @if (hasEntries()) {
+        <ion-button class="bar-icon" (click)="openClear()" aria-label="Clear history">
+          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+        </ion-button>
+      }
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (!hasEntries()) {
+    <div class="placeholder">
+      <ion-icon name="time-outline" aria-hidden="true"></ion-icon>
+      <h2>Nothing read yet</h2>
+      <p>Books you open show up here, so you can pick up where you left off.</p>
+    </div>
+  } @else {
+    @for (group of groups(); track group.key) {
+      <section class="group">
+        <div class="group-title">{{ group.label }}</div>
+
+        @for (entry of group.entries; track entry.bookId) {
+          <div
+            class="row"
+            role="button"
+            tabindex="0"
+            [class.unavailable]="!isAvailable(entry)"
+            [attr.aria-label]="entry.title + ' — ' + metaFor(entry)"
+            (click)="resume(entry)"
+            (keyup.enter)="resume(entry)"
+          >
+            @if (coverFor(entry); as cover) {
+              <ion-img class="cover" [src]="cover" [alt]="entry.title"></ion-img>
+            } @else {
+              <div class="cover empty-art">
+                <ion-icon name="book-outline" aria-hidden="true"></ion-icon>
+              </div>
+            }
+
+            <div class="body">
+              <div class="row-head">
+                <span class="name">{{ entry.title }}</span>
+                <span class="when">{{ readTime(entry) }}</span>
+              </div>
+              <span class="meta">{{ metaFor(entry) }}</span>
+
+              @if (isAvailable(entry)) {
+                <div
+                  class="progress"
+                  role="progressbar"
+                  [attr.aria-valuenow]="percentFor(entry)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-label="Read progress"
+                >
+                  <div class="progress-fill" [style.width.%]="percentFor(entry)"></div>
+                </div>
+              }
+            </div>
+
+            <button
+              type="button"
+              class="remove-btn"
+              (click)="$event.stopPropagation(); remove(entry)"
+              (keyup.enter)="$event.stopPropagation(); remove(entry)"
+              [attr.aria-label]="'Remove ' + entry.title + ' from history'"
+            >
+              <ion-icon name="close-outline" aria-hidden="true"></ion-icon>
+            </button>
+          </div>
+        }
+      </section>
+    }
+  }
+
+  <ion-alert
+    [isOpen]="clearOpen()"
+    header="Clear history?"
+    message="Only the list of recently read books is removed. Your library and reading progress stay as they are."
+    [buttons]="clearButtons"
+    (didDismiss)="onClearDismiss($any($event).detail.role)"
+  ></ion-alert>
+
+  <ion-toast
+    [isOpen]="toastMessage() !== null"
+    [message]="toastMessage() ?? ''"
+    [duration]="4000"
+    swipeGesture="vertical"
+    position="bottom"
+    color="light"
+    (ionToastDidDismiss)="toastMessage.set(null)"
+  ></ion-toast>
+</ion-content>

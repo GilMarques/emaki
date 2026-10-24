@@ -9,6 +9,7 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonNote,
   IonSelect,
   IonSelectOption,
   IonToggle,
@@ -20,9 +21,11 @@ import type {
   PageTransition,
   ReadingDirection,
   ScreenOrientation,
+  ViewerBackground,
   ViewerMode,
   ZoomMode,
 } from '../../core/models/settings.model';
+import { VIEWER_BACKGROUND_PRESETS } from '../../core/models/settings.model';
 import { SettingsService } from '../../core/services/settings.service';
 
 interface Option<T extends string> {
@@ -95,7 +98,7 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
   selector: 'ov-display-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonItem, IonLabel, IonList, IonSelect, IonSelectOption, IonToggle],
+  imports: [IonIcon, IonItem, IonLabel, IonList, IonNote, IonSelect, IonSelectOption, IonToggle],
   template: `
     <ion-list lines="none" class="settings-list">
       <ion-item>
@@ -181,6 +184,45 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           }
         </ion-select>
       </ion-item>
+
+      <div class="bg-picker">
+        <ion-item>
+          <ion-icon
+            aria-hidden="true"
+            slot="start"
+            ios="color-palette-outline"
+            md="color-palette-sharp"
+          ></ion-icon>
+          <ion-label>Viewer background</ion-label>
+          <ion-note slot="end" class="bg-hex">{{ viewerBackground() }}</ion-note>
+        </ion-item>
+        <div class="bg-swatches" role="group" aria-label="Viewer background color">
+          @for (preset of backgroundPresets; track preset.value) {
+            <button
+              type="button"
+              class="bg-swatch"
+              [class.selected]="viewerBackground() === preset.value"
+              [style.background]="preset.value"
+              [attr.aria-label]="preset.label"
+              [attr.aria-pressed]="viewerBackground() === preset.value"
+              [attr.title]="preset.label"
+              (click)="onViewerBackgroundChange(preset.value)"
+            ></button>
+          }
+          <label
+            class="bg-swatch bg-custom"
+            [class.selected]="customBackground()"
+            title="Custom color"
+          >
+            <input
+              type="color"
+              [value]="viewerBackground()"
+              (input)="onCustomBackgroundInput($event)"
+              aria-label="Custom viewer background color"
+            />
+          </label>
+        </div>
+      </div>
 
       <ion-item>
         <ion-icon
@@ -276,6 +318,72 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
       ion-select::part(label) {
         font-size: 0.875rem;
       }
+      .bg-hex {
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+        text-transform: lowercase;
+        color: var(--ion-color-medium);
+      }
+      .bg-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 0 16px 12px 52px;
+      }
+      .bg-swatch {
+        position: relative;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        box-shadow:
+          inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+          inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+        cursor: pointer;
+        appearance: none;
+
+        &.selected {
+          box-shadow:
+            0 0 0 2px var(--ion-background-color, #fff),
+            0 0 0 4px var(--ion-color-primary, #3880ff);
+        }
+      }
+      .bg-custom {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: conic-gradient(
+          from 0deg,
+          #e5352b,
+          #f2c94c,
+          #27ae60,
+          #2d9cdb,
+          #9b51e0,
+          #e5352b
+        );
+
+        &::before {
+          content: '';
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.92);
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+          pointer-events: none;
+        }
+
+        input[type='color'] {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          padding: 0;
+          border: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+      }
     `,
   ],
 })
@@ -289,6 +397,7 @@ export class DisplaySettingsComponent {
   public readonly orientations = ORIENTATION_OPTIONS;
   public readonly readingDirections = READING_DIRECTION_OPTIONS;
   public readonly zooms = ZOOM_OPTIONS;
+  public readonly backgroundPresets = VIEWER_BACKGROUND_PRESETS;
 
   // Bindings — read from the settings signal each cycle.
   public readonly orientation = computed(() => this.settings.settings().display.screenOrientation);
@@ -299,6 +408,22 @@ export class DisplaySettingsComponent {
   public readonly zoom = computed(() => this.settings.settings().display.zoom);
   public readonly readingDirection = computed(() => this.settings.settings().display.readingDirection);
   public readonly keepAwake = computed(() => this.settings.settings().display.keepAwake);
+  public readonly viewerBackground = computed(() => this.settings.settings().display.viewerBackground);
+
+  /** True when the stored color isn't one of the preset swatches. */
+  public readonly customBackground = computed(
+    () =>
+      !VIEWER_BACKGROUND_PRESETS.some((preset) => preset.value === this.viewerBackground()),
+  );
+
+  public onViewerBackgroundChange(value: ViewerBackground): void {
+    this.settings.setViewerBackground(value);
+  }
+
+  public onCustomBackgroundInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.settings.setViewerBackground(value);
+  }
 
   public onKeepAwakeChange(event: CustomEvent<{ checked: boolean }>): void {
     this.settings.setKeepAwake(event.detail.checked);

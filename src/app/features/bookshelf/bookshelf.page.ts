@@ -1,21 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
 import {
   IonAlert,
   IonButton,
   IonButtons,
-  IonCol,
   IonContent,
-  IonFab,
-  IonFabButton,
-  IonFabList,
-  IonGrid,
   IonHeader,
   IonIcon,
   IonImg,
+  IonLabel,
   IonModal,
-  IonMenuButton,
-  IonRow,
+  IonSearchbar,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonText,
   IonTitle,
@@ -25,6 +21,7 @@ import {
 
 import { DisplaySettingsComponent } from '../viewer/display-settings.component';
 import { FiltersSettingsComponent } from '../viewer/filters-settings.component';
+import { MenuButtonComponent } from '../../shared/menu-button.component';
 import type { FsFolder } from '../../core/native/library-scanner.port';
 import type { Book } from '../../core/models/book.model';
 import { FILE_SYSTEM_BROWSER, type FileSystemBrowser } from '../../core/native/file-system-browser.port';
@@ -43,18 +40,15 @@ import { ShelfService } from '../../core/services/shelf.service';
     IonAlert,
     IonButton,
     IonButtons,
-    IonCol,
     IonContent,
-    IonFab,
-    IonFabButton,
-    IonFabList,
-    IonGrid,
     IonHeader,
     IonIcon,
     IonImg,
-    IonModal,
-    IonMenuButton,
-    IonRow,
+    IonLabel,
+      IonModal,
+    IonSearchbar,
+    IonSegment,
+    IonSegmentButton,
     IonSpinner,
     IonText,
     IonTitle,
@@ -62,12 +56,12 @@ import { ShelfService } from '../../core/services/shelf.service';
     IonToolbar,
     DisplaySettingsComponent,
     FiltersSettingsComponent,
+    MenuButtonComponent,
   ],
   templateUrl: './bookshelf.page.html',
   styleUrls: ['./bookshelf.page.scss'],
 })
 export class BookshelfPage {
-  private readonly router = inject(Router);
   private readonly scanner = inject(ScannerService);
   private readonly bookshelf = inject(BookstoreService);
   private readonly shelf = inject(ShelfService);
@@ -83,12 +77,14 @@ export class BookshelfPage {
   public readonly scanning = this.scanner.scanning;
   public readonly booksFound = this.scanner.booksFound;
 
-  /** Filters sheet (moved here from the reader's quick-actions). */
-  public readonly filtersOpen = signal(false);
-  /** Display sheet (reading direction, layout, zoom, theme, …). */
-  public readonly displayOpen = signal(false);
-  /** Whether the action FAB's list is expanded. */
-  public readonly fabOpen = signal(false);
+  /** Combined Display + Filters sheet ("options" in the top bar). */
+  public readonly settingsOpen = signal(false);
+  /** Which half of the sheet is showing. */
+  public readonly settingsTab = signal<'display' | 'filters'>('display');
+
+  /** Whether the search field is showing, and the current library query. */
+  public readonly searchOpen = signal(false);
+  public readonly query = signal('');
 
   /** Ids of the folder chain from the root to the current folder. */
   public readonly currentPath = signal<readonly string[]>([]);
@@ -153,18 +149,6 @@ export class BookshelfPage {
   /** Confirmation toast message, or null when hidden. */
   public readonly toastMessage = signal<string | null>(null);
 
-  /** Toast "View" button — navigates to the manager and dismisses. */
-  public readonly toastButtons = computed(() => [
-    {
-      text: 'View',
-      side: 'end',
-      handler: () => {
-        void this.router.navigate(['/manager']);
-        return true; // dismiss the toast
-      },
-    },
-  ]);
-
   private isBookFolder(f: FsFolder): boolean {
     return f.isBook && this.scanner.isScanned(f.id);
   }
@@ -182,45 +166,59 @@ export class BookshelfPage {
     return node;
   });
 
-  /** Breadcrumb trail from the root to the current folder. */
-  public readonly crumbs = computed(() => {
-    const root = this.tree();
-    if (!root) return [];
-    const out: { readonly id: string; readonly name: string }[] = [
-      { id: root.id, name: root.name },
-    ];
-    let node: FsFolder = root;
-    for (const id of this.currentPath()) {
-      const next = node.children.find((c) => c.id === id);
-      if (!next) break;
-      out.push({ id: next.id, name: next.name });
-      node = next;
-    }
-    return out;
-  });
-
-  /** Header title: current folder path joined with "/", e.g. "Downloads/Hunter x Hunter". */
-  public readonly titlePath = computed(() => this.crumbs().map((c) => c.name).join('/'));
+  /** Header title: the current folder's name ("Library" at the root). */
+  public readonly titleText = computed(() => this.currentFolder()?.name ?? 'Library');
 
   /** Child folders of the current folder. */
   public readonly children = computed<readonly FsFolder[]>(
     () => this.currentFolder()?.children ?? [],
   );
 
+  /** Tiles to render: the current folder's children, narrowed by the query. */
+  public readonly visibleChildren = computed<readonly FsFolder[]>(() => {
+    const q = this.query().trim().toLowerCase();
+    const list = this.children();
+    return q.length === 0 ? list : list.filter((c) => c.name.toLowerCase().includes(q));
+  });
+
+  /** Books and pages under each folder, computed once per tree change. */
+  private readonly stats = computed(() => {
+    const map = new Map<string, { books: number; pages: number }>();
+    const root = this.tree();
+    if (root === null) return map;
+    const walk = (node: FsFolder): { books: number; pages: number } => {
+      if (node.isBook) {
+        const pages = this.shelf.byId(node.id)?.pages.length ?? node.imageUrls?.length ?? 0;
+        const value = { books: 1, pages };
+        map.set(node.id, value);
+        return value;
+      }
+      let books = 0;
+      let pages = 0;
+      for (const child of node.children) {
+        const s = walk(child);
+        books += s.books;
+        pages += s.pages;
+      }
+      const value = { books, pages };
+      map.set(node.id, value);
+      return value;
+    };
+    walk(root);
+    return map;
+  });
+
   constructor() {
     // Populate the tree immediately so the explorer shows structure without a scan.
     void this.scanner.discover();
   }
 
-  /** True if a folder should render as a book cover (scanned book leaf). */
-  public showCover(folder: FsFolder): boolean {
-    return folder.isBook && this.scanner.isScanned(folder.id) && !!folder.imageUrls?.length;
-  }
-
-  /** Cover URL, resolved through the fs resolver for real-disk books. */
-  public coverFor(folder: FsFolder): string | undefined {
-    const raw = this.scanner.coverFor(folder);
-    if (!raw) return undefined;
+  /** Cover art URL for a tile, resolved for real-disk books. */
+  public coverUrlFor(folder: FsFolder): string | undefined {
+    const raw = folder.isBook
+      ? this.scanner.coverFor(folder)
+      : this.firstCoverBelow(folder);
+    if (raw === undefined) return undefined;
     if (folder.id.startsWith('fs:')) {
       // Track the resolver revision so the cover re-renders once the blob/asset
       // URL is ready (fast path via convertFileSrc is synchronous anyway).
@@ -230,29 +228,51 @@ export class BookshelfPage {
     return raw;
   }
 
-  /**
-   * Cover thumbnails to render for a tile:
-   * - a scanned book → its single cover;
-   * - a container folder → a stack of up to 4 covers of the books inside it.
-   * Empty for unscanned books / empty folders (renders a folder icon instead).
-   */
-  public coversFor(folder: FsFolder): readonly string[] {
-    if (folder.isBook) {
-      const c = this.scanner.coverFor(folder);
-      return c ? [c] : [];
-    }
-    const out: string[] = [];
-    const walk = (f: FsFolder): void => {
-      if (out.length >= 4) return;
-      if (f.isBook) {
-        const c = this.scanner.coverFor(f);
-        if (c && !out.includes(c)) out.push(c);
-        return;
+  /** First cover found under a container folder, so series still show art. */
+  private firstCoverBelow(folder: FsFolder): string | undefined {
+    for (const child of folder.children) {
+      if (child.isBook) {
+        const cover = this.scanner.coverFor(child);
+        if (cover !== undefined) return cover;
+      } else {
+        const cover = this.firstCoverBelow(child);
+        if (cover !== undefined) return cover;
       }
-      f.children.forEach(walk);
-    };
-    folder.children.forEach(walk);
-    return out;
+    }
+    return undefined;
+  }
+
+  /** Caption under a tile's name: page count for a book, book count for a series. */
+  public metaFor(folder: FsFolder): string {
+    const stat = this.stats().get(folder.id);
+    if (stat === undefined || stat.books === 0) {
+      return folder.isBook ? 'Not scanned' : 'Empty';
+    }
+    if (!folder.isBook) {
+      return `${stat.books} book${stat.books === 1 ? '' : 's'}`;
+    }
+    const pages = `${stat.pages} page${stat.pages === 1 ? '' : 's'}`;
+    const progress = this.progressFor(folder);
+    return progress === null ? pages : `${pages} · ${Math.round(progress * 100)}%`;
+  }
+
+  /** Toggle the search field; closing it clears the query. */
+  public toggleSearch(): void {
+    const open = !this.searchOpen();
+    this.searchOpen.set(open);
+    if (!open) this.query.set('');
+  }
+
+  /** Live-filter the tiles as the user types. */
+  public onSearchInput(event: Event): void {
+    const detail = (event as CustomEvent<{ value?: string | null }>).detail;
+    this.query.set(detail?.value ?? '');
+  }
+
+  /** Switch the sheet between Display and Filters. */
+  public onSettingsTabChange(event: Event): void {
+    const detail = (event as CustomEvent<{ value?: string | number | undefined }>).detail;
+    this.settingsTab.set(detail?.value === 'filters' ? 'filters' : 'display');
   }
 
   /** Read progress as a 0..1 fraction for a book tile, or null when not started. */
@@ -323,8 +343,9 @@ export class BookshelfPage {
     if (!root) return;
     const covers: string[] = [];
     const walk = (node: FsFolder): void => {
-      if (node.id.startsWith('fs:') && node.imageUrls && node.imageUrls.length > 0) {
-        covers.push(node.imageUrls[0]);
+      if (node.id.startsWith('fs:')) {
+        const cover = this.scanner.coverFor(node);
+        if (cover !== undefined) covers.push(cover);
       }
       node.children.forEach(walk);
     };

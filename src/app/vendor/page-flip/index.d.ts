@@ -53,6 +53,13 @@ export interface FlipUI {
   destroy(): void;
 }
 
+/** Page collection as exposed by the lib: spreads hold rendered-page indices. */
+export interface FlipPageCollection {
+  getSpread(): readonly (readonly number[])[];
+  getSpreadIndexByPage(page: number): number | null;
+  getCurrentPageIndex(): number;
+}
+
 export class PageFlip {
   constructor(inBlock: HTMLElement, setting: Partial<FlipSetting>);
   on(event: string, callback: (e: FlipEvent) => void): void;
@@ -71,6 +78,8 @@ export class PageFlip {
   userStop(pos: Point, isSwipe?: boolean): void;
   getPageCount(): number;
   getCurrentPageIndex(): number;
+  getPageCollection(): FlipPageCollection;
+  getOrientation(): 'portrait' | 'landscape';
   getFlipController(): FlipController;
   getBoundsRect(): PageRect;
   getSettings(): Readonly<FlipSetting>;

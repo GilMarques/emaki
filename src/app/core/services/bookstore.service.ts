@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import type { Book, OpenBookState, Page } from '../models/book.model';
+import { HistoryService } from './history.service';
 import { ShelfService } from './shelf.service';
 
 /**
@@ -16,6 +17,7 @@ import { ShelfService } from './shelf.service';
 @Injectable({ providedIn: 'root' })
 export class BookstoreService {
   private readonly shelf = inject(ShelfService);
+  private readonly history = inject(HistoryService);
   private readonly _state = signal<OpenBookState>({ book: null });
 
   /** Reactive snapshot of the open-book state. */
@@ -45,15 +47,22 @@ export class BookstoreService {
     this._zoom.set(1);
     this.shelf.setProgress(book.id, 0);
     this._state.set({ book, currentIndex: 0 });
+    this.history.record(book, 0);
   }
 
-  /** Open a registered book by id, resuming at its saved progress. */
-  public openById(id: string): void {
+  /**
+   * Open a registered book by id. Resumes at `startAt` when given, otherwise
+   * at the shelf's saved progress.
+   */
+  public openById(id: string, startAt?: number): void {
     const book = this.shelf.byId(id);
     if (book === undefined) return;
     this._zoom.set(1);
-    const start = Math.max(0, Math.min(this.shelf.progressFor(id), book.pages.length - 1));
+    const requested = startAt ?? this.shelf.progressFor(id);
+    const start = Math.max(0, Math.min(requested, book.pages.length - 1));
+    this.shelf.setProgress(id, start);
     this._state.set({ book, currentIndex: start });
+    this.history.record(book, start);
   }
 
   /** Close the current book. */
@@ -85,6 +94,7 @@ export class BookstoreService {
     const idx = s.currentIndex + 1;
     this.shelf.setProgress(s.book.id, idx);
     this._state.set({ book: s.book, currentIndex: idx });
+    this.history.record(s.book, idx);
   }
 
   /** Go to the previous page. No-op if there isn't one. */
@@ -95,6 +105,7 @@ export class BookstoreService {
     const idx = s.currentIndex - 1;
     this.shelf.setProgress(s.book.id, idx);
     this._state.set({ book: s.book, currentIndex: idx });
+    this.history.record(s.book, idx);
   }
 
   /** Jump to an absolute page index. Out-of-range indices clamp. */
@@ -104,6 +115,7 @@ export class BookstoreService {
     const clamped = Math.max(0, Math.min(index, s.book.pages.length - 1));
     this.shelf.setProgress(s.book.id, clamped);
     this._state.set({ book: s.book, currentIndex: clamped });
+    this.history.record(s.book, clamped);
   }
 
   /** Zoom factor applied to the rendered page quad. 1 = fit-screen.

@@ -1,0 +1,221 @@
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top bar: same compact, flat treatment as the library. */
+
+ion-toolbar.history-bar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
+  --min-height: 52px;
+  --padding-start: 2px;
+  --padding-end: 2px;
+}
+
+.history-title {
+  padding: 0 6px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bar-actions {
+  margin-inline-end: 2px;
+}
+
+.bar-icon {
+  width: 36px;
+  height: 36px;
+  margin: 0 1px;
+  --padding-start: 0;
+  --padding-end: 0;
+  --background: transparent;
+  --color: var(--ion-color-medium, #92949c);
+
+  ion-icon {
+    font-size: 20px;
+  }
+}
+
+/* Day sections. */
+
+.group {
+  padding-bottom: 6px;
+}
+
+.group-title {
+  padding: 14px 14px 4px;
+  color: var(--ion-color-medium, #92949c);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Book row: cover, title/meta/progress, remove action. */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px 7px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 120ms ease;
+
+  &:active {
+    background: var(--ion-color-step-50, rgba(0, 0, 0, 0.04));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ion-color-primary);
+    outline-offset: -2px;
+  }
+}
+
+.cover {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 72px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ion-color-step-100, #ddd);
+}
+
+ion-img.cover::part(image) {
+  object-fit: cover;
+}
+
+.empty-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ion-color-medium, #92949c);
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.22;
+}
+
+.when {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: var(--ion-color-medium, #92949c);
+  white-space: nowrap;
+}
+
+.meta {
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: var(--ion-color-medium, #92949c);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.progress {
+  height: 3px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--ion-color-step-100, rgba(0, 0, 0, 0.08));
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--ion-color-primary, #3880ff);
+  transition: width 0.2s ease;
+}
+
+/* Dim a book the shelf can no longer resolve (deleted or not scanned yet). */
+
+.row.unavailable {
+  .cover {
+    opacity: 0.45;
+  }
+
+  .name {
+    color: var(--ion-color-medium, #92949c);
+  }
+}
+
+.remove-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ion-color-medium, #92949c);
+  cursor: pointer;
+
+  ion-icon {
+    font-size: 18px;
+  }
+
+  &:active {
+    background: var(--ion-color-step-100, rgba(0, 0, 0, 0.08));
+  }
+}
+
+/* Empty state. */
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--ion-color-medium, #92949c);
+
+  ion-icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+  }
+
+  h2 {
+    margin: 0 0 6px;
+    color: var(--ion-text-color);
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+}

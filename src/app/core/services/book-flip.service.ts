@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
 
 import type { Book, Page } from '../models/book.model';
-import type { ZoomMode } from '../models/settings.model';
+import type { PageTransition, ZoomMode } from '../models/settings.model';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
 import { ScanEnhancementService } from './scan-enhancement.service';
@@ -70,6 +70,13 @@ export class BookFlipService {
   private readonly _mounted = signal(false);
   public readonly mounted = this._mounted.asReadonly();
 
+  /** True while a slide transition is animating (viewer gates input on it). */
+  private readonly _turning = signal(false);
+  public readonly turning = this._turning.asReadonly();
+
+  /** Tears down the in-flight slide animation, if any. */
+  private slideCleanup: (() => void) | null = null;
+
   /** Book-wide single-page size the lib is mounted with. Stable per mount and
    *  independent of which page is currently shown, so fit modes apply to the
    *  whole book and page turns never resize the canvas. */
@@ -86,6 +93,7 @@ export class BookFlipService {
     book: Book,
     layout: 'single' | 'double',
     zoom: ZoomMode = 'fit-screen',
+    transition: PageTransition = 'page-curl',
   ): void {
     const sameBook = this.mountedBookId === book.id;
     const state = this.bookstore.state();
@@ -106,7 +114,7 @@ export class BookFlipService {
       .then((warmedUrls) => {
         if (generation !== this.mountGeneration) return; // a newer mount started
         if (warmedUrls.length === 0) return;
-        this.mountWithUrls(host, book, warmedUrls, layout, zoom, pageIndex);
+        this.mountWithUrls(host, book, warmedUrls, layout, zoom, pageIndex, transition);
       });
   }
 
@@ -118,9 +126,11 @@ export class BookFlipService {
     layout: 'single' | 'double',
     zoom: ZoomMode,
     pageIndex: number,
+    transition: PageTransition,
   ): void {
     this.unmount();
     this.host = host;
+    const interactiveCurl = transition === 'page-curl';
     this.resetHost(host);
 
     const generation = ++this.mountGeneration;
@@ -151,8 +161,8 @@ export class BookFlipService {
         startPage: this.renderedIndexByLogicalIndex[pageIndex] ?? 0,
         // A book's first page is always a standalone cover in landscape mode.
         showCover: true,
-        showPageCorners: true,
-        disableFlipByClick: false,
+        showPageCorners: interactiveCurl,
+        disableFlipByClick: !interactiveCurl,
         ...(layout === 'single'
           ? { usePortrait: true }
           : { usePortrait: false }),
@@ -199,6 +209,7 @@ export class BookFlipService {
   /** Tear down the current instance if any. Idempotent. Keeps the host in the DOM. */
   public unmount(): void {
     this.mountGeneration++;
+    this.finishSlide();
     this._flipState.set(null);
     this._bookPageSize.set(null);
     this.logicalIndexByRenderedIndex = [];
@@ -236,6 +247,7 @@ export class BookFlipService {
   public refreshImages(): void {
     if (this.instance === null) return;
     if (this._flipState() !== 'read') return;
+    if (this._turning()) return;
     const book = this.bookstore.state().book;
     if (book === null) return;
 
@@ -256,6 +268,141 @@ export class BookFlipService {
   public turnToPage(index: number): void {
     const renderedIndex = this.renderedIndexByLogicalIndex[index] ?? index;
     this.instance?.turnToPage(renderedIndex);
+  }
+
+  /**
+   * Logical page index of the neighbouring spread, or null at the book's
+   * first/last spread. Spread-aware: dual-page layout and the landscape
+   * split pages advance a whole spread, not a single rendered leaf.
+   */
+  public neighborPage(direction: 'next' | 'prev'): number | null {
+    const instance = this.instance;
+    if (instance === null) return null;
+
+    const collection = instance.getPageCollection();
+    const rendered = instance.getCurrentPageIndex();
+    const spreadIndex = collection.getSpreadIndexByPage(rendered);
+    if (spreadIndex === null) return null;
+
+    const spreads = collection.getSpread();
+    const target = direction === 'next' ? spreadIndex + 1 : spreadIndex - 1;
+    if (target < 0 || target >= spreads.length) return null;
+
+    const renderedIndex = spreads[target][0];
+    return this.logicalIndexByRenderedIndex[renderedIndex] ?? renderedIndex;
+  }
+
+  /**
+   * Animate one page turn for the slide transitions.
+   *
+   * The lib has no slide animation, so the outgoing spread is snapshotted off
+   * its canvas, the lib turns instantly underneath, and the snapshot is pushed
+   * off the host while the live (already-updated) canvas slides in from the
+   * opposite edge. Both layers share one easing so the hand-off is seamless.
+   *
+   * `rtl` mirrors the travel direction so a swap to the next page always comes
+   * from the reading-forward edge.
+   */
+  public slideToPage(
+    index: number,
+    direction: 'next' | 'prev',
+    axis: 'horizontal' | 'vertical',
+    rtl: boolean,
+  ): void {
+    const instance = this.instance;
+    const host = this.host;
+    if (instance === null || host === null || this._turning()) return;
+
+    const target = this.renderedIndexByLogicalIndex[index] ?? index;
+    if (target === instance.getCurrentPageIndex()) return;
+
+    const element = instance.getUI().getDistElement();
+    if (!(element instanceof HTMLCanvasElement)) {
+      this.turnToPage(index);
+      return;
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.turnToPage(index);
+      return;
+    }
+
+    // Snapshot before turning. A tainted canvas (shouldn't happen for blob: /
+    // data: page URLs) falls back to an instant turn.
+    let snapshot: string;
+    try {
+      snapshot = element.toDataURL('image/jpeg', 0.9);
+    } catch {
+      this.turnToPage(index);
+      return;
+    }
+
+    const distance = axis === 'horizontal' ? host.clientWidth : host.clientHeight;
+    if (distance <= 0) {
+      this.turnToPage(index);
+      return;
+    }
+
+    const overlay = document.createElement('img');
+    overlay.src = snapshot;
+    overlay.alt = '';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.className = 'stf__slide-snapshot';
+    Object.assign(overlay.style, {
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      objectFit: 'fill',
+      pointerEvents: 'none',
+      zIndex: '1000',
+    });
+    host.appendChild(overlay);
+
+    this.turnToPage(index);
+
+    // Next page comes from reading-forward-left in LTR next, mirrored in RTL.
+    const sign = (direction === 'next') === !rtl ? -1 : 1;
+    const shift = (value: number): string =>
+      axis === 'horizontal'
+        ? `translate3d(${value}px, 0, 0)`
+        : `translate3d(0, ${value}px, 0)`;
+    const options: KeyframeAnimationOptions = {
+      duration: 300,
+      easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+    };
+
+    const outAnimation = overlay.animate(
+      [{ transform: shift(0) }, { transform: shift(sign * distance) }],
+      options,
+    );
+    const inAnimation = element.animate(
+      [{ transform: shift(-sign * distance) }, { transform: shift(0) }],
+      options,
+    );
+
+    const finish = (): void => {
+      overlay.remove();
+      inAnimation.cancel();
+      outAnimation.cancel();
+      this.slideCleanup = null;
+      this._turning.set(false);
+    };
+    this.slideCleanup = finish;
+    this._turning.set(true);
+
+    void Promise.all([outAnimation.finished, inAnimation.finished])
+      .catch(() => undefined)
+      .then(() => {
+        if (this.slideCleanup === finish) finish();
+      });
+  }
+
+  /** Abort an in-flight slide and restore the canvas transform. */
+  private finishSlide(): void {
+    const cleanup = this.slideCleanup;
+    this.slideCleanup = null;
+    cleanup?.();
+    this._turning.set(false);
   }
 
   /** Imperative nav with the curl animation. */

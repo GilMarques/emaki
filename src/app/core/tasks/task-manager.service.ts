@@ -5,7 +5,7 @@ import type { NewTask, TaskKind, TaskProgress, TaskUpdate } from './task-manager
 /**
  * Registry of every in-flight background task (upscaling, downloads).
  *
- * The Manager page renders `tasks()`; owning services call `register` /
+ * The side menu renders the download tasks; owning services call `register` /
  * `update` / `remove` as work progresses. A task is kept until removed —
  * finished jobs stay visible so the user can see what completed, then are
  * dismissed by the owning service (or a future "clear" action).

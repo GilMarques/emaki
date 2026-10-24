@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   FILTER_BOUNDS,
   MAGNIFIER_BOUNDS,
+  isHexColor,
   type AppSettings,
   type DisplaySettings,
   type FilterMethod,
@@ -16,6 +17,7 @@ import {
   type PageTransition,
   type ReadingDirection,
   type ScreenOrientation,
+  type ViewerBackground,
   type ViewerMode,
   type ZoomMode,
 } from '../models/settings.model';
@@ -73,6 +75,15 @@ export class SettingsService {
 
   public setZoom(value: ZoomMode): void {
     this._settings.update((s) => ({ ...s, display: { ...s.display, zoom: value } }));
+  }
+
+  /** Viewer background color. Rejects anything that isn't `#rgb` / `#rrggbb`. */
+  public setViewerBackground(value: ViewerBackground): void {
+    if (!isHexColor(value)) return;
+    this._settings.update((s) => ({
+      ...s,
+      display: { ...s.display, viewerBackground: value },
+    }));
   }
 
   public setMagnifierZoom(value: number): void {
@@ -170,6 +181,9 @@ export class SettingsService {
       viewerMode: this.pickEnum(d['viewerMode'], ['paged', 'vertical-scroll', 'horizontal-scroll'], fallback.display.viewerMode),
       pageTransition: this.pickEnum(d['pageTransition'], ['none', 'slide-horizontal', 'slide-vertical', 'page-curl'], fallback.display.pageTransition),
       zoom: this.pickEnum(d['zoom'], ['actual-size', 'fit-screen', 'fit-width', 'fit-height', 'fixed-size', 'stretch-to-fill', 'cover'], fallback.display.zoom),
+      viewerBackground: isHexColor(d['viewerBackground'])
+        ? d['viewerBackground']
+        : fallback.display.viewerBackground,
       magnifierZoom: this.pickNumber(d['magnifierZoom'], MAGNIFIER_BOUNDS.min, MAGNIFIER_BOUNDS.max, fallback.display.magnifierZoom),
       keepAwake: typeof d['keepAwake'] === 'boolean' ? d['keepAwake'] : fallback.display.keepAwake,
     };

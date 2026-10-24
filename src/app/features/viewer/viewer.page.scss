@@ -6,12 +6,13 @@
 
 
 ion-content {
+  /* Fallback only — the viewer binds this to the saved background color. */
   --background: #111;
-  /* Respect the status-bar/notch and gesture-bar insets on edge-to-edge
-     Android & iOS. The page (or the #111 background) letterboxes in the
-     inset area instead of sliding under the system bars. */
-  --padding-top: var(--ion-safe-area-top, 0px);
-  --padding-bottom: var(--ion-safe-area-bottom, 0px);
+  /* Edge-to-edge: the viewer paints its own letterbox, so a safe-area
+     padding here carved a black strip out of it below the gesture bar.
+     The page-flip canvas now runs under the system bars instead. */
+  --padding-top: 0px;
+  --padding-bottom: 0px;
 }
 
 ion-content::part(scroll) {
@@ -31,7 +32,8 @@ ion-content::part(scroll) {
   min-width: 0;
   overflow: hidden;
   touch-action: none;
-  /* Grey surround visible when zoomed out / panned past the page. */
+  /* Grey surround visible when zoomed out / panned past the page.
+     Fallback only — the saved Viewer background color overrides it. */
   background: #555;
 }
 
@@ -80,7 +82,10 @@ ov-book-spread {
 .empty-state {
   align-self: center;
   margin: auto;
-  padding: 24px;
+  padding: 20px 24px;
+  border-radius: 12px;
+  /* Dim chip so the text stays readable on any viewer background color. */
+  background: rgba(0, 0, 0, 0.6);
   color: rgba(255, 255, 255, 0.78);
   text-align: center;
 }

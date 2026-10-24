@@ -15,7 +15,7 @@ import {
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { SettingsService } from '../../core/services/settings.service';
 import type { Book } from '../../core/models/book.model';
-import type { PageLayout, ZoomMode } from '../../core/models/settings.model';
+import type { PageLayout, PageTransition, ZoomMode } from '../../core/models/settings.model';
 
 /**
  * Host for a page-flip instance. Mounts the lib on its element ref and
@@ -65,6 +65,10 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
 
   public readonly zoom = computed<ZoomMode>(() => this.settings.settings().display.zoom);
 
+  public readonly transition = computed<PageTransition>(
+    () => this.settings.settings().display.pageTransition,
+  );
+
   private resizeObserver?: ResizeObserver;
   /** Key of the last successful mount, so we don't remount on every pixel. */
   private mountedKey = '';
@@ -75,6 +79,7 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
       this.book();
       this.layout();
       this.zoom();
+      this.transition();
       this.tryMount();
     });
   }
@@ -111,10 +116,11 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
 
     const layout = this.layout();
     const zoom = this.zoom();
-    const key = `${book.id}:${layout}:${zoom}:${w}x${h}`;
+    const transition = this.transition();
+    const key = `${book.id}:${layout}:${zoom}:${transition}:${w}x${h}`;
     if (key === this.mountedKey && this.flip.mounted()) return;
 
     this.mountedKey = key;
-    this.flip.mount(el, book, layout, zoom);
+    this.flip.mount(el, book, layout, zoom, transition);
   }
 }

@@ -23,7 +23,7 @@ const TILE_SIZE = 0; // 0 = native auto
 
 interface InternalJob {
   readonly bookId: string;
-  /** Human title for the Manager task list. */
+  /** Human title for the task list. */
   title: string;
   pages: readonly Page[];
   state: Map<number, EnhancementPageState>;

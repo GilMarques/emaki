@@ -101,7 +101,11 @@ export class DownloadsLibraryService {
     const fileName = d.files[index] ?? `${String(index).padStart(3, '0')}.jpg`;
     const path = this.store.filePath(d.providerId, d.chapterId, fileName);
     if (!Capacitor.isNativePlatform()) return path;
-    return Capacitor.convertFileSrc(path);
+    // convertFileSrc only maps absolute paths to the local file server; a
+    // store-relative path would 404 in the WebView. Fall back to the relative
+    // path until the data dir resolves, then recompute.
+    const absolute = this.store.absolutePath(path);
+    return absolute === null ? path : Capacitor.convertFileSrc(absolute);
   }
 
   private seriesFolder(title: string, list: ChapterDownload[]): FsFolder {

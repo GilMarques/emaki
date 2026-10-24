@@ -130,8 +130,7 @@ export class DownloadService {
   }
 
   /**
-   * Remove every downloaded chapter matching a chapter id. The Manager page
-   * only knows tasks by chapter id, so it uses this to delete without the
+   * Remove every downloaded chapter matching a chapter id, without needing the
    * provider id (a given chapter id is effectively unique per provider in
    * practice; all matches are removed defensively).
    */
