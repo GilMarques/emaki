@@ -106,11 +106,9 @@ ion-fab-button[title]::after {
   gap: 6px;
   padding: 8px;
   border-radius: 10px;
-  transition: background 0.12s ease;
 
   &:hover,
   &:focus-visible {
-    background: var(--ion-color-step-50, #f3f3f3);
     outline: none;
   }
 }
