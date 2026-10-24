@@ -1,7 +1,19 @@
 name: Build Android APK
 
+# Tags (v1.2.3) publish a signed APK as a GitHub Release asset.
+# Manual runs build the same APK and attach it to the workflow run instead.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, e.g. v1.0.0 (defaults to package.json version)'
+        required: false
+        type: string
+      publish:
+        description: 'Publish a GitHub Release for this version'
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -15,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,34 +45,101 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install NDK and CMake
+        # native/real-esrgan builds ncnn RealSR from source: it needs NDK
+        # 29.0.14206865 (pinned in its build.gradle) and CMake.
+        run: sdkmanager "ndk;29.0.14206865" "cmake;3.22.1"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web assets and sync native project
+      - name: Build web assets
+        run: npm run build
+
+      - name: Sync native project
+        run: npx cap sync android
+
+      - name: Resolve version
+        id: ver
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          npm run build
-          npx cap sync android
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          if [ "$REF_TYPE" = "tag" ]; then
+            version="$REF_NAME"
+          fi
+          version="${version:-$(node -p "require('./package.json').version")}"
+          version="${version#v}"
+          code="$(node -e "const p=process.argv[1].split(/[-+]/)[0].split('.').map(n=>parseInt(n,10)||0); console.log((p[0]||0)*10000+(p[1]||0)*100+(p[2]||0));" "$version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Building version $version (versionCode $code)"
 
       - name: Write signing config from secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > android/release.keystore
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Missing signing secrets. Run scripts/setup-release-secrets.sh to configure them."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/release.keystore
           cat > android/keystore.properties <<EOF
           storeFile=release.keystore
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
           EOF
 
       - name: Build signed release APK
-        run: cd android && ./gradlew assembleRelease
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            -PemakiVersionName="${{ steps.ver.outputs.version }}" \
+            -PemakiVersionCode="${{ steps.ver.outputs.code }}"
 
       - name: Verify APK signature
         run: |
+          set -euo pipefail
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
           "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk
 
+      - name: Collect release files
+        id: files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          name="emaki-v${{ steps.ver.outputs.version }}.apk"
+          cp "$apk" "release/$name"
+          (cd release && sha256sum "$name" > "$name.sha256")
+          ls -la release
+
       - name: Upload APK to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag' || inputs.publish
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/app-release.apk
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
+          generate_release_notes: true
+          files: |
+            release/*.apk
+            release/*.sha256
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: emaki-v${{ steps.ver.outputs.version }}-apk
+          path: release/*.apk
+          retention-days: 30

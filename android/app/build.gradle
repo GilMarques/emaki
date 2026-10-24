@@ -6,15 +6,24 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Version: package.json is the single source of truth for local builds, and
+// the release workflow overrides both values with the git tag it builds
+// (-PemakiVersionName / -PemakiVersionCode), so CI and local builds agree.
+def packageJson = new groovy.json.JsonSlurper().parseText(file("${rootDir}/../package.json").text)
+def defaultVersionName = packageJson.version ?: '0.0.1'
+def defaultVersionCode = rootProject.ext.semverToVersionCode(defaultVersionName)
+def versionNameValue = (project.findProperty('emakiVersionName') ?: defaultVersionName).toString()
+def versionCodeValue = (project.findProperty('emakiVersionCode') ?: defaultVersionCode).toInteger()
+
 android {
-    namespace = "io.ionic.starter"
+    namespace = "com.openviewer.emaki"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "io.ionic.starter"
+        applicationId "com.openviewer.emaki"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode versionCodeValue
+        versionName versionNameValue
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

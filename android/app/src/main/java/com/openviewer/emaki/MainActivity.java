@@ -1,4 +1,4 @@
-package io.ionic.starter;
+package com.openviewer.emaki;
 
 import android.os.Bundle;
 
