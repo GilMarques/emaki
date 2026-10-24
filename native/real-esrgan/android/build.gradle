@@ -22,7 +22,12 @@ android {
 }
 
 dependencies {
-    implementation 'com.capacitorjs:core:8.+'
+    // The Capacitor library must be the project dependency, not the published
+    // "com.capacitorjs:core" artifact: the app already includes
+    // project(':capacitor-android'), and shipping both puts the same classes
+    // (AndroidProtocolHandler, ...) into the APK twice, which fails the dex
+    // merge. The official Capacitor plugins branch on the same condition.
+    implementation project(':capacitor-android')
     // capacitor core uses androidx.core internally but does not expose it on
     // the compile classpath; the foreground service needs ContextCompat.
     implementation 'androidx.core:core:1.17.0'

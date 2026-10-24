@@ -16,7 +16,9 @@ android {
 }
 
 dependencies {
-    implementation 'com.capacitorjs:core:8.+'
+    // See native/real-esrgan/android/build.gradle: the Maven artifact would
+    // duplicate the classes of project(':capacitor-android') in the APK.
+    implementation project(':capacitor-android')
     // capacitor core uses androidx.activity internally but does not expose it
     // on the compile classpath; the @ActivityCallback signature needs it.
     implementation 'androidx.activity:activity:1.11.0'
