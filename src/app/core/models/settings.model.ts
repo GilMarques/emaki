@@ -138,7 +138,33 @@ export interface FilterSettings {
 export interface AppSettings {
   readonly display: DisplaySettings;
   readonly filters: FilterSettings;
+  readonly enhancement: EnhancementPreferences;
 }
+
+/**
+ * Scan-enhancement preferences.
+ *
+ * `seriesBudgetBytes` caps how much disk the enhanced derivatives of ONE
+ * series may occupy. The enhancer treats it as a rolling window: it keeps
+ * working ahead of the reader until the budget is full, and drops the
+ * oldest enhanced books as the window rolls forward. 0 = no cap.
+ */
+export interface EnhancementPreferences {
+  readonly seriesBudgetBytes: number;
+}
+
+/** Budget presets offered in Preferences. */
+export const SERIES_BUDGET_PRESETS: readonly {
+  readonly bytes: number;
+  readonly label: string;
+}[] = [
+  { bytes: 512 * 1024 * 1024, label: '512 MB' },
+  { bytes: 1024 * 1024 * 1024, label: '1 GB' },
+  { bytes: 2 * 1024 * 1024 * 1024, label: '2 GB' },
+  { bytes: 4 * 1024 * 1024 * 1024, label: '4 GB' },
+  { bytes: 8 * 1024 * 1024 * 1024, label: '8 GB' },
+  { bytes: 0, label: 'Unlimited' },
+];
 
 /** Defaults — keep in one place so the service, tests, and reset share them. */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -162,6 +188,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sepia: { enabled: false, value: 0 },
     grain: { enabled: false, value: 0 },
     imageSmooth: { method: 'none' },
+  },
+  enhancement: {
+    // 2 GB of enhanced pages: roughly a hundred chapters of a typical manga
+    // series at the capped 1800 px WebP derivative size.
+    seriesBudgetBytes: 2 * 1024 * 1024 * 1024,
   },
 };
 

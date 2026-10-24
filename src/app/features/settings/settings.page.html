@@ -14,6 +14,28 @@
   <ion-list-header>Filters</ion-list-header>
   <ov-filters-settings />
 
+  <ion-list-header>Enhancement</ion-list-header>
+  <ion-list lines="inset">
+    <ion-item>
+      <ion-label>
+        <h2>Series enhancement budget</h2>
+        <p>
+          How much disk the enhanced scans of one series may use. Enhancement runs
+          ahead of the book you are reading; when the budget is reached the oldest
+          enhanced chapters are dropped to make room for the next ones.
+        </p>
+      </ion-label>
+    </ion-item>
+    <ion-item>
+      <ion-label>Disk budget</ion-label>
+      <ion-select slot="end" [value]="budgetBytes()" (ionChange)="onBudget($event)">
+        @for (preset of budgetPresets; track preset.bytes) {
+          <ion-select-option [value]="preset.bytes">{{ preset.label }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+  </ion-list>
+
   <ion-list-header>App</ion-list-header>
   <ion-list lines="inset">
     <ion-item>

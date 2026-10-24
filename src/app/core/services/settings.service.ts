@@ -13,6 +13,7 @@ import {
   type FilterSlider,
   type ImageSmoothMethod,
   type InterfaceTheme,
+  type EnhancementPreferences,
   type PageLayout,
   type PageTransition,
   type ReadingDirection,
@@ -132,6 +133,21 @@ export class SettingsService {
     }));
   }
 
+  // ──────────────────────── Enhancement setters ────────────────────────
+
+  /**
+   * Cap on the disk one series' enhanced derivatives may occupy (0 = no cap).
+   * The enhancer rolls a window of enhanced books forward with the reader, so
+   * this bounds how far ahead it works.
+   */
+  public setSeriesBudgetBytes(value: number): void {
+    if (!Number.isFinite(value) || value < 0) return;
+    this._settings.update((s) => ({
+      ...s,
+      enhancement: { ...s.enhancement, seriesBudgetBytes: Math.floor(value) },
+    }));
+  }
+
   // ──────────────────────── Reset ────────────────────────
 
   public resetToDefaults(): void {
@@ -170,7 +186,11 @@ export class SettingsService {
   private validate(input: unknown): AppSettings {
     const fallback = DEFAULT_SETTINGS;
     if (typeof input !== 'object' || input === null) return fallback;
-    const i = input as { display?: Record<string, unknown>; filters?: Record<string, unknown> };
+    const i = input as {
+      display?: Record<string, unknown>;
+      filters?: Record<string, unknown>;
+      enhancement?: Record<string, unknown>;
+    };
 
     const d = (i.display ?? {}) as Record<string, unknown>;
     const display: DisplaySettings = {
@@ -199,7 +219,19 @@ export class SettingsService {
       imageSmooth: this.pickFilterMethod(f['imageSmooth'], fallback.filters.imageSmooth),
     };
 
-    return { display, filters };
+    return { display, filters, enhancement: this.readEnhancement(i.enhancement, fallback) };
+  }
+
+  /** Enhancement preferences are a single number; anything else is ignored. */
+  private readEnhancement(
+    raw: Record<string, unknown> | undefined,
+    fallback: AppSettings,
+  ): EnhancementPreferences {
+    const bytes = raw?.['seriesBudgetBytes'];
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) {
+      return fallback.enhancement;
+    }
+    return { seriesBudgetBytes: Math.floor(bytes) };
   }
 
   private pickEnum<T extends string>(

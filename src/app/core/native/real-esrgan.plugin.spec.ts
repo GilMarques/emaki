@@ -25,7 +25,7 @@ function fakeBackend(
     },
     async enhancePage(_args: EnhancePageArgs): Promise<EnhancePageResult> {
       this.calls.push('enhancePage');
-      return { destinationUri: 'out', width: 1, height: 1, model: 'x', scale: 2 };
+      return { destinationUri: 'out', width: 1, height: 1, model: 'x', scale: 2, bytes: 10 };
     },
     async cancelPage(): Promise<{ cancelled: boolean }> {
       this.calls.push('cancelPage');

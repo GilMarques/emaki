@@ -120,6 +120,21 @@ export class PageAssetService {
     }
   }
 
+  /** Size of a derivative on disk, in bytes (0 when it can't be measured).
+   *  The series budget is metered with these. */
+  public async sizeOf(uri: string): Promise<number> {
+    if (!Capacitor.isNativePlatform()) return 0;
+    try {
+      const stat = await Filesystem.stat({
+        path: await this.relativeToCache(uri),
+        directory: NATIVE_DIRECTORY,
+      });
+      return stat.size ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
   /**
    * Map a derivative URI onto a path relative to the cache directory.
    *

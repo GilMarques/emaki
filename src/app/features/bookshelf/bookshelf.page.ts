@@ -30,6 +30,7 @@ import { FilePageService } from '../../core/services/file-page.service';
 import { LibraryRootService } from '../../core/services/library-root.service';
 import { ScannerService } from '../../core/services/scanner.service';
 import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { ShelfService } from '../../core/services/shelf.service';
 
 /**
@@ -77,6 +78,7 @@ export class BookshelfPage {
   private readonly root = inject(LibraryRootService);
   private readonly filePages = inject(FilePageService);
   private readonly enhance = inject(ScanEnhancementService);
+  private readonly settings = inject(SettingsService);
 
   /** The folder-pick entry point only appears when a fs backend is present. */
   public readonly showFiles = computed(() => this.fs.isAvailable());
@@ -126,11 +128,18 @@ export class BookshelfPage {
     } else {
       const n = this.collectBooks(f).length;
       base = `${n} book${n === 1 ? '' : 's'} in this series will be enhanced in the background.`;
+      const budget = this.budgetBytes();
+      if (budget > 0) {
+        base += ` Enhancement follows you through the series and stays within ${formatBytes(budget)} of disk — the chapters you have passed are dropped to make room for the ones ahead.`;
+      }
     }
     const size = this.alertSize();
     if (size === null) return this.alertEstimating() ? `${base}\nEstimating space…` : base;
     return `${base}\nEstimated space: ~${size}`;
   });
+
+  /** The disk budget one series' enhanced scans may use (0 = unlimited). */
+  public readonly budgetBytes = computed(() => this.settings.settings().enhancement.seriesBudgetBytes);
 
   /** Whether the space estimate is still being computed. */
   public readonly alertEstimating = signal(false);
@@ -452,11 +461,12 @@ export class BookshelfPage {
     this.toastMessage.set(`Enhancing "${book.title}"`);
   }
 
-  /** Background-enhance every book inside a series folder, without opening any. */
+  /** Background-enhance every book inside a series folder, without opening any.
+   *  The series id is the folder's, so the rolling window survives a restart. */
   public async enhanceSeriesTile(folder: FsFolder): Promise<void> {
     const books = this.collectBooks(folder);
     if (books.length === 0) return;
-    await this.enhance.enhanceSeries(books);
+    await this.enhance.enhanceSeries(folder.id, books);
     this.toastMessage.set(`Enhancing ${books.length} book${books.length === 1 ? '' : 's'}`);
   }
 
@@ -477,6 +487,7 @@ export class BookshelfPage {
 
 /** Human-readable byte size (e.g. "12.4 MB"). */
 export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
   const units = ['KB', 'MB', 'GB', 'TB'] as const;
   let value = bytes;
   let unit = 'B';
@@ -485,7 +496,6 @@ export function formatBytes(bytes: number): string {
     unit = u;
     if (value < 1024) break;
   }
-  if (unit === 'B') return `${Math.round(bytes)} B`;
   const rendered = value >= 10 || Number.isInteger(value) ? Math.round(value) : value.toFixed(1);
   return `${rendered} ${unit}`;
 }

@@ -155,6 +155,7 @@ public class RealEsrganPlugin extends Plugin {
 
             JSObject result = new JSObject(json);
             result.put("destinationUri", dstPath);
+            result.put("bytes", new File(dstPath).length());
             call.resolve(result);
         } catch (Throwable e) {
             Log.e(TAG, "enhancePage() FAILED after " + ms(t0) + "ms: " + e.getMessage(), e);

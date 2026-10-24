@@ -76,6 +76,8 @@ export interface EnhancementPageState {
   readonly sourceHash: string;
   /** Cache key that produced `enhancedUri`. Stale completions are rejected. */
   readonly cacheKey: string;
+  /** Size of the derivative on disk, in bytes. 0 until the page completes. */
+  readonly bytes: number;
   readonly error: EnhancementError | null;
 }
 
@@ -112,6 +114,9 @@ export interface EnhancePageResult {
   readonly height: number;
   readonly model: EnhancementModelId;
   readonly scale: 2 | 4;
+  /** Size of the written derivative in bytes — the series budget is metered
+   *  with these, so the backend reports what it actually wrote. */
+  readonly bytes: number;
 }
 
 /** Serialized shape persisted across sessions (per book). */

@@ -5,6 +5,7 @@ import { BookstoreService } from './bookstore.service';
 import { PageAssetService } from './page-asset.service';
 import { FilePageService } from './file-page.service';
 import { RealEsrganPluginService, type EnhancePageArgs } from '../native/real-esrgan.plugin';
+import { SettingsService } from './settings.service';
 import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 import type { Book, Page } from '../models/book.model';
 import type { EnhancementCapabilities, EnhancePageResult } from '../models/scan-enhancement.model';
@@ -64,16 +65,33 @@ class FakePlugin {
     this.cancelCalls++;
     return { cancelled: true };
   }
+  async startForeground(): Promise<void> {}
+  async updateForeground(): Promise<void> {}
+  async stopForeground(): Promise<void> {}
 
-  resolveLast(uri = 'enhanced://out.png'): void {
+  resolveLast(uri?: string): void {
     const a = this.lastArgs!;
     const r = this.resolvers.pop();
-    r?.({ destinationUri: uri, width: 100, height: 200, model: a.model, scale: a.scale });
+    r?.({
+      destinationUri: uri ?? a.destinationUri,
+      width: 100,
+      height: 200,
+      model: a.model,
+      scale: a.scale,
+      bytes: 512 * 1024,
+    });
   }
-  resolveFirst(uri = 'enhanced://out.png'): void {
+  resolveFirst(uri?: string): void {
     const a = this.calls[0];
     const r = this.resolvers.shift();
-    r?.({ destinationUri: uri, width: 100, height: 200, model: a.model, scale: a.scale });
+    r?.({
+      destinationUri: uri ?? a.destinationUri,
+      width: 100,
+      height: 200,
+      model: a.model,
+      scale: a.scale,
+      bytes: 512 * 1024,
+    });
   }
   rejectLast(kind = 'unknown', message = 'boom'): void {
     const r = this.rejecters.pop();
@@ -92,6 +110,9 @@ class FakeAssets {
     return this.existsMap.has(uri);
   }
   async delete(): Promise<void> {}
+  async sizeOf(uri: string): Promise<number> {
+    return this.existsMap.has(uri) ? 512 * 1024 : 0;
+  }
   buildDestinationUri(_key: unknown, _source?: string): string {
     return `enhanced://${JSON.stringify(_key)}`;
   }
@@ -248,5 +269,84 @@ describe('ScanEnhancementService', () => {
     await flush();
     expect(service.isSupported()).toBe(false);
     expect(plugin.calls.length).toBe(0); // nothing queued
+  });
+
+  describe('series window', () => {
+    /** Resolve every pending page, one after another, until the queue idles. */
+    async function drain(): Promise<void> {
+      await flush();
+      for (let i = 0; i < 60; i++) {
+        const before = plugin.calls.length;
+        if (before === 0) break;
+        plugin.resolveLast();
+        await flush();
+        if (plugin.calls.length === before) break;
+      }
+    }
+
+    /** Ids of the books the plugin was asked to enhance. */
+    function enhancedBooks(): string[] {
+      return [...new Set(plugin.calls.map((c) => c.sourceUri.split('/')[2]))];
+    }
+
+    it('keeps the series inside its budget', async () => {
+      const settings = TestBed.inject(SettingsService);
+      settings.setSeriesBudgetBytes(2 * 1024 * 1024);
+      const books = [makeBook('s1', 2), makeBook('s2', 2), makeBook('s3', 2), makeBook('s4', 2)];
+      bookstore.openBook(books[0]);
+
+      await service.enhanceSeries('series-1', books);
+      await drain();
+
+      const state = service.seriesStates().get('series-1');
+      expect(state).toBeDefined();
+      expect(state!.usedBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+      // Some of the series is enhanced — the queue does not stall.
+      expect(enhancedBooks().length).toBeGreaterThan(0);
+    });
+
+    it('books the next chapter once the reader moves on', async () => {
+      const settings = TestBed.inject(SettingsService);
+      settings.setSeriesBudgetBytes(2 * 1024 * 1024);
+      const books = [makeBook('s1', 2), makeBook('s2', 2), makeBook('s3', 2), makeBook('s4', 2)];
+      bookstore.openBook(books[0]);
+
+      await service.enhanceSeries('series-1', books);
+      await drain();
+      const before = plugin.calls.length;
+
+      // The reader finishes s1 and opens s2: the window rolls forward.
+      bookstore.openBook(books[1]);
+      TestBed.flushEffects();
+      await flush();
+      await drain();
+
+      expect(plugin.calls.length).toBeGreaterThan(before);
+      // The chapter just finished is kept — the reader may want to re-read it.
+      expect(service.hasEnhanced('s1')).toBe(true);
+    });
+
+    it('drops the chapters that fall behind the reader', async () => {
+      const settings = TestBed.inject(SettingsService);
+      settings.setSeriesBudgetBytes(2 * 1024 * 1024);
+      const books = [makeBook('s1', 2), makeBook('s2', 2), makeBook('s3', 2), makeBook('s4', 2)];
+      bookstore.openBook(books[0]);
+
+      await service.enhanceSeries('series-1', books);
+      await drain();
+
+      // Read through the series: the window rolls forward and the chapters
+      // behind the reader are dropped to make room for the new ones.
+      for (const book of books.slice(1)) {
+        bookstore.openBook(book);
+        TestBed.flushEffects();
+        await flush();
+        await drain();
+      }
+
+      expect(service.hasEnhanced('s1')).toBe(false);
+      const state = service.seriesStates().get('series-1');
+      expect(state!.usedBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+    });
   });
 });

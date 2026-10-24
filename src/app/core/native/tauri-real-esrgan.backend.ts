@@ -61,8 +61,17 @@ export class TauriRealEsrganBackend implements ScanEnhancementBackend {
       tileSize: args.tileSize,
       denoise: args.denoise,
       jobId: args.jobId,
-    });
-    return result as EnhancePageResult;
+    }) as Partial<EnhancePageResult>;
+    return {
+      destinationUri: result.destinationUri ?? args.destinationUri,
+      width: result.width ?? 0,
+      height: result.height ?? 0,
+      model: result.model ?? args.model,
+      scale: result.scale ?? args.scale,
+      // The desktop engine doesn't report the file size yet, so the series
+      // budget can't be metered there. 0 counts as "unknown" downstream.
+      bytes: result.bytes ?? 0,
+    };
   }
 
   async cancelPage(jobId: string): Promise<{ cancelled: boolean }> {

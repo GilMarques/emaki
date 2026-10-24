@@ -4,6 +4,7 @@ import type { Book, Page } from '../models/book.model';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
 import { PageAssetService, cacheKeyString, sourceHashFor } from './page-asset.service';
+import { SettingsService } from './settings.service';
 import { RealEsrganPluginService } from '../native/real-esrgan.plugin';
 import { TaskManagerService } from '../tasks/task-manager.service';
 import type { TaskStatus } from '../tasks/task-manager.model';
@@ -19,6 +20,46 @@ import {
 } from '../models/scan-enhancement.model';
 
 const STORAGE_PREFIX = 'openviewer:enhancement:';
+/** Per-series window state (budget bookkeeping, frontier). */
+const SERIES_PREFIX = 'openviewer:enhancement-series:';
+
+/**
+ * Fallback size of one enhanced page when nothing has been measured yet.
+ * Measured on device: a 1800 px WebP derivative of a typical manga page is
+ * ~450 KB.
+ */
+const DEFAULT_BYTES_PER_PAGE = 450 * 1024;
+
+/**
+ * A series being enhanced under a rolling disk budget.
+ *
+ * `bookIds` is the series in reading order. `frontier` is the next book to
+ * enhance; `anchor` is the book the reader is on (or last was). The window
+ * rolls forward as the reader moves: books ahead of the anchor are queued
+ * until the budget is full, and the oldest enhanced books are dropped to
+ * make room for the next ones.
+ */
+interface SeriesWindow {
+  readonly seriesId: string;
+  /** The series in reading order. Mutable: a book the user removed leaves
+   *  the window so it is not quietly queued again. */
+  bookIds: string[];
+  frontier: number;
+  anchor: number;
+}
+
+/** Public snapshot of a series' budget usage, for the UI. */
+export interface SeriesEnhancementState {
+  readonly seriesId: string;
+  /** Budget in bytes (0 = unlimited). */
+  readonly budgetBytes: number;
+  /** Bytes the enhanced derivatives of this series currently occupy. */
+  readonly usedBytes: number;
+  /** How many of the series' books are enhanced right now. */
+  readonly booksEnhanced: number;
+  /** How many books the series has. */
+  readonly booksTotal: number;
+}
 /**
  * Tile size handed to the native engine (0 = let it pick). `realsr.cpp` syncs
  * the GPU after every tile, so tiny tiles dominate the runtime: on a Dimensity
@@ -69,6 +110,7 @@ export class ScanEnhancementService {
   private readonly assets = inject(PageAssetService);
   private readonly filePages = inject(FilePageService);
   private readonly tasks = inject(TaskManagerService);
+  private readonly appSettings = inject(SettingsService);
 
   private readonly _capabilities = signal<EnhancementCapabilities>({
     available: false,
@@ -100,6 +142,11 @@ export class ScanEnhancementService {
 
   /** The single running native job across all books, or null when idle. */
   private _activeSlot: ActiveSlot | null = null;
+  /** Counter for native job ids. Must be unique across books: the id is the
+   *  token that tells a late completion from the current one, and a per-book
+   *  counter let two books share 'job-1' — so a stale completion from the
+   *  book you just left was accepted as the new book's work. */
+  private jobCounter = 0;
   /** True while the Android foreground service is keeping the batch alive. */
   private _fgActive = false;
   private persistScheduled = false;
@@ -109,6 +156,15 @@ export class ScanEnhancementService {
    *  book is confirmed unused (not displayed, no active job, no live blob). */
   private readonly _gcQueue = new Map<string, readonly string[]>();
 
+  /** Series being enhanced under a rolling budget, keyed by series id. */
+  private readonly _series = new Map<string, SeriesWindow>();
+
+  /** Budget snapshot per series, for the UI. */
+  private readonly _seriesStates = signal<ReadonlyMap<string, SeriesEnhancementState>>(
+    new Map(),
+  );
+  public readonly seriesStates = this._seriesStates.asReadonly();
+
   constructor() {
     // Track the open book so displayUrlFor always resolves against it.
     effect(() => {
@@ -116,9 +172,12 @@ export class ScanEnhancementService {
       this._displayedBookId.set(book ? book.id : null);
       // Closing the reader is a safe point to dispose queued derivatives.
       this.gc();
-      // A book enhanced in an earlier session has no in-memory job yet; restore
-      // it so its enhanced pages render without tapping Enhance again.
-      if (book !== null) untracked(() => void this.restoreForOpenBook(book));
+      if (book !== null) {
+        // The rolling window follows the reader: the book being read anchors
+        // the series it belongs to.
+        this.anchorSeries(book.id);
+        untracked(() => void this.restoreForOpenBook(book));
+      }
     });
 
     // Persist on any state change (settings or any job map), debounced.
@@ -304,6 +363,19 @@ export class ScanEnhancementService {
    *  is free, because pump() skips pages whose destination already exists.
    */
   public removeEnhancement(bookId: string): void {
+    // Take the book out of its series window: the user asked for it to stop
+    // being enhanced, and the rolling window must not queue it again.
+    for (const series of this._series.values()) {
+      const index = series.bookIds.indexOf(bookId);
+      if (index < 0) continue;
+      series.bookIds = series.bookIds.filter((id) => id !== bookId);
+      if (index < series.frontier) series.frontier--;
+      if (index < series.anchor) series.anchor--;
+      series.frontier = Math.max(0, Math.min(series.frontier, series.bookIds.length));
+      series.anchor = Math.max(0, Math.min(series.anchor, Math.max(0, series.bookIds.length - 1)));
+      this.persistSeries(series);
+      this.publishSeriesState(series);
+    }
     const job = this._jobs().get(bookId);
     const uris = this.collectDerivativeUris(bookId);
     // Stop any in-flight work for this book.
@@ -388,36 +460,349 @@ export class ScanEnhancementService {
   }
 
   /** Enhance a book in the BACKGROUND (does not open it, does not affect the
-   *  reader). Safe to call for a book that is not currently open. */
+   *  reader). Safe to call for a book that is not currently open.
+   *
+   *  A single book is just a series of one, so it goes through the same
+   *  budget machinery: the book is enhanced even when it is bigger than the
+   *  budget, but a second book would have to wait for the first to be
+   *  dropped. */
   public async enhanceBook(book: Book): Promise<void> {
-    await this.refreshCapabilities();
-    if (book.source.type === 'folder') {
-      await this.filePages.preload(book);
-    }
-    const job = this.getOrCreateJob(book);
-    this.applyDefaultModel(job);
-    job.enabled = true;
-    job.state = this.loadPersisted(book.id, job.pages, job.settings) ?? this.seedPending(book.id, job.pages, job.settings);
-    this._jobs.update((m) => new Map(m).set(book.id, job));
-    this.syncTask(job);
-    void this.pump();
+    await this.enhanceSeries(book.id, [book]);
   }
 
-  /** Enhance every book in a series (a folder of books) in the background. */
-  public async enhanceSeries(books: readonly Book[]): Promise<void> {
+  /**
+   * Enhance a series (a folder of books) in the background, under a rolling
+   * disk budget.
+   *
+   * The window is anchored on the book the reader is on (or last was) and
+   * rolls forward from there: books ahead of the anchor are queued until the
+   * budget is full, and the oldest enhanced books are dropped as the window
+   * moves on. The book being read, and the one just finished, are never the
+   * first to go.
+   */
+  public async enhanceSeries(seriesId: string, books: readonly Book[]): Promise<void> {
     await this.refreshCapabilities();
+    if (books.length === 0) return;
+    const bookIds = books.map((b) => b.id);
+    const restored = this._series.get(seriesId) ?? this.readSeries(seriesId);
+    const series: SeriesWindow = {
+      seriesId,
+      bookIds,
+      frontier: Math.min(restored?.frontier ?? 0, bookIds.length),
+      anchor: Math.min(restored?.anchor ?? 0, Math.max(0, bookIds.length - 1)),
+    };
+    this._series.set(seriesId, series);
+
+    // Anchor on the book being read, if it belongs to this series.
+    const displayed = this._displayedBookId();
+    const at = displayed === null ? -1 : bookIds.indexOf(displayed);
+    if (at >= 0) {
+      series.anchor = at;
+      series.frontier = Math.max(series.frontier, at);
+    }
+
     for (const book of books) {
       if (book.source.type === 'folder') {
         await this.filePages.preload(book);
       }
       const job = this.getOrCreateJob(book);
       this.applyDefaultModel(job);
-      job.enabled = true;
-      job.state = this.loadPersisted(book.id, job.pages, job.settings) ?? this.seedPending(book.id, job.pages, job.settings);
+      job.state =
+        this.loadPersisted(book.id, job.pages, job.settings) ??
+        this.seedPending(book.id, job.pages, job.settings);
       this._jobs.update((m) => new Map(m).set(book.id, job));
-      this.syncTask(job);
     }
+
+    this.rebalance(series);
     void this.pump();
+  }
+
+  // ─────────────────────────── Rolling window ───────────────────────────
+
+  /** Move the anchor of every series that contains `bookId` to it, and roll
+   *  the window forward. Called when the reader opens a book. */
+  private anchorSeries(bookId: string): void {
+    for (const series of this._series.values()) {
+      const index = series.bookIds.indexOf(bookId);
+      if (index < 0 || series.anchor === index) continue;
+      series.anchor = index;
+      // Reading backwards re-opens the window over the books behind the new
+      // position: they may have been dropped on the way forward. The same goes
+      // for a chapter that was dropped from the far end of the run.
+      if (index < series.frontier || this.bookBytes(bookId) === 0) {
+        series.frontier = index;
+      }
+      this.rebalance(series);
+      void this.pump();
+    }
+  }
+
+  /**
+   * The book the window hangs on: the one being read, or — when the reader is
+   * elsewhere — the last one of this series they opened.
+   *
+   * Read straight from the bookstore rather than from a cached signal, so the
+   * window is never a step behind the reader.
+   */
+  private anchorFor(series: SeriesWindow): number {
+    const book = this.bookstore.state().book;
+    if (book !== null) {
+      const index = series.bookIds.indexOf(book.id);
+      if (index >= 0) return index;
+    }
+    return series.anchor;
+  }
+
+  /** The series a book belongs to, if any. */
+  private seriesFor(bookId: string): SeriesWindow | undefined {
+    for (const series of this._series.values()) {
+      if (series.bookIds.includes(bookId)) return series;
+    }
+    return undefined;
+  }
+
+  /**
+   * Roll the window: drop the enhanced books that no longer fit the budget,
+   * then queue the books ahead of the reader that do.
+   *
+   * The budget is measured against COMMITTED bytes — what is on disk plus
+   * what the queued books are about to write — otherwise the queue would
+   * happily book the whole series before a single page had landed.
+   */
+  private rebalance(series: SeriesWindow): void {
+    const budget = this.budgetBytes();
+    const anchor = this.anchorFor(series);
+    if (anchor !== series.anchor) {
+      series.anchor = anchor;
+      // Reading backwards re-opens the window over the books behind the new
+      // position: they may have been dropped on the way forward.
+      if (anchor < series.frontier) series.frontier = anchor;
+    }
+
+    // 1. Give the space back: the books behind the reader are the ones that
+    //    have served their purpose. The chapter just finished is protected.
+    if (budget > 0) {
+      let total = this.committedBytes(series);
+      while (total > budget) {
+        const victim = this.pickVictim(series);
+        if (victim === null) break;
+        total -= this.bookCommittedBytes(series, victim);
+        this.evictBook(victim);
+      }
+    }
+
+    // 2. Spend it again: queue the books ahead of the reader. Only the AHEAD
+    //    of the window counts against the budget here — the books behind are
+    //    on their way out, and the chapter being read is already paid for.
+    const perPage = this.averageBytesPerPage(series);
+    let ahead = this.aheadCommittedBytes(series);
+    while (series.frontier < series.bookIds.length) {
+      const bookId = series.bookIds[series.frontier];
+      const pages = this._jobs().get(bookId)?.pages.length ?? 0;
+      // A book that is already enhanced costs nothing more — it must not stop
+      // the queue, or the window could never roll back over it.
+      const already = this.bookBytes(bookId);
+      const cost = already > 0 ? 0 : Math.round(pages * perPage);
+      const single = series.bookIds.length === 1;
+      if (!single && budget > 0 && ahead + cost > budget) break;
+      this.enableBook(bookId);
+      ahead += cost;
+      series.frontier++;
+    }
+
+    this.persistSeries(series);
+    this.publishSeriesState(series);
+  }
+
+  /**
+   * Pick the book to drop when the series is over budget.
+   *
+   * Only the books BEHIND the reader are dropped, furthest behind first: the
+   * chapters ahead are the ones the reader is about to open, and dropping one
+   * would leave a hole in the enhanced run. The book being read and the one
+   * just finished are never candidates — the reader keeps the chapter they
+   * just closed — and neither is a book with work in flight.
+   *
+   * When every candidate is protected the series stays a little over budget
+   * (by the one protected chapter) rather than punching a hole in the run.
+   */
+  private pickVictim(series: SeriesWindow): string | null {
+    const anchor = series.anchor;
+    const behind: string[] = [];
+    series.bookIds.forEach((id, index) => {
+      if (index >= anchor) return;
+      if (index === anchor - 1) return;
+      if (id === this._displayedBookId()) return;
+      if (this._activeSlot?.bookId === id) return;
+      if (this.bookBytes(id) === 0) return;
+      behind.push(id);
+    });
+    return behind.length > 0 ? behind[0] : null;
+  }
+
+  /**
+   * Drop a book's derivatives and stop enhancing it. The book stays part of
+   * the series, so the window can pick it up again if it rolls back.
+   */
+  private evictBook(bookId: string): void {
+    const uris = this.collectDerivativeUris(bookId);
+    if (uris.length > 0) {
+      const queued = this._gcQueue.get(bookId) ?? [];
+      this._gcQueue.set(bookId, [...new Set([...queued, ...uris])]);
+    }
+    const job = this._jobs().get(bookId);
+    if (job !== undefined) {
+      job.enabled = false;
+      job.state = new Map();
+      this._jobs.update((m) => new Map(m).set(bookId, job));
+    }
+    this.tasks.remove(bookId, 'upscale');
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_PREFIX + bookId);
+      } catch {
+        // ignore
+      }
+    }
+    this.gc();
+    this._revision.update((r) => r + 1);
+  }
+
+  /** Queue a book for enhancement (the window decides which ones qualify). */
+  private enableBook(bookId: string): void {
+    const job = this._jobs().get(bookId);
+    if (job === undefined) return;
+    if (!job.enabled) {
+      job.enabled = true;
+      if (job.state.size === 0) {
+        job.state =
+          this.loadPersisted(bookId, job.pages, job.settings) ??
+          this.seedPending(bookId, job.pages, job.settings);
+      }
+      this._jobs.update((m) => new Map(m).set(bookId, job));
+    }
+    this.syncTask(job);
+  }
+
+  /** Bytes the enhanced derivatives of one book occupy. */
+  private bookBytes(bookId: string): number {
+    const job = this._jobs().get(bookId);
+    if (job === undefined) return 0;
+    let total = 0;
+    for (const s of job.state.values()) {
+      if (isComplete(s)) total += s.bytes;
+    }
+    return total;
+  }
+
+  /** Bytes the enhanced derivatives of a whole series occupy. */
+  private seriesBytes(series: SeriesWindow): number {
+    let total = 0;
+    for (const id of series.bookIds) total += this.bookBytes(id);
+    return total;
+  }
+
+  /**
+   * Bytes a book occupies once its queued pages are written: what is on disk
+   * now plus an estimate for the pages still to come.
+   */
+  private bookCommittedBytes(series: SeriesWindow, bookId: string): number {
+    const job = this._jobs().get(bookId);
+    if (job === undefined) return 0;
+    const done = this.bookBytes(bookId);
+    if (!job.enabled) return done;
+    let completed = 0;
+    for (const s of job.state.values()) if (isComplete(s)) completed++;
+    const remaining = Math.max(0, job.pages.length - completed);
+    return done + remaining * this.averageBytesPerPage(series);
+  }
+
+  /** What the whole series occupies once its queued work is written. */
+  private committedBytes(series: SeriesWindow): number {
+    let total = 0;
+    for (const id of series.bookIds) total += this.bookCommittedBytes(series, id);
+    return total;
+  }
+
+  /** What the books AHEAD of the reader occupy once their work is written. */
+  private aheadCommittedBytes(series: SeriesWindow): number {
+    let total = 0;
+    for (let i = series.anchor; i < series.bookIds.length; i++) {
+      total += this.bookCommittedBytes(series, series.bookIds[i]);
+    }
+    return total;
+  }
+
+  /** How many of the series' books are enhanced right now. */
+  private seriesBookCount(series: SeriesWindow): number {
+    let count = 0;
+    for (const id of series.bookIds) if (this.bookBytes(id) > 0) count++;
+    return count;
+  }
+
+  /** Measured average size of an enhanced page in this series. */
+  private averageBytesPerPage(series: SeriesWindow): number {
+    let bytes = 0;
+    let pages = 0;
+    for (const id of series.bookIds) {
+      const job = this._jobs().get(id);
+      if (job === undefined) continue;
+      for (const s of job.state.values()) {
+        if (!isComplete(s)) continue;
+        bytes += s.bytes;
+        pages++;
+      }
+    }
+    if (pages === 0) return DEFAULT_BYTES_PER_PAGE;
+    return bytes / pages;
+  }
+
+  /** The disk budget for one series (0 = unlimited). */
+  private budgetBytes(): number {
+    return this.appSettings.settings().enhancement.seriesBudgetBytes;
+  }
+
+  private publishSeriesState(series: SeriesWindow): void {
+    const state: SeriesEnhancementState = {
+      seriesId: series.seriesId,
+      budgetBytes: this.budgetBytes(),
+      usedBytes: this.seriesBytes(series),
+      booksEnhanced: this.seriesBookCount(series),
+      booksTotal: series.bookIds.length,
+    };
+    this._seriesStates.update((m) => new Map(m).set(series.seriesId, state));
+  }
+
+  private persistSeries(series: SeriesWindow): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(
+        SERIES_PREFIX + series.seriesId,
+        JSON.stringify({
+          bookIds: series.bookIds,
+          frontier: series.frontier,
+          anchor: series.anchor,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  /** Read a persisted window so a restart doesn't start the series over. */
+  private readSeries(seriesId: string): { frontier: number; anchor: number } | null {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(SERIES_PREFIX + seriesId);
+      if (raw === null) return null;
+      const parsed = JSON.parse(raw) as { frontier?: unknown; anchor?: unknown };
+      return {
+        frontier: typeof parsed.frontier === 'number' ? parsed.frontier : 0,
+        anchor: typeof parsed.anchor === 'number' ? parsed.anchor : 0,
+      };
+    } catch {
+      return null;
+    }
   }
 
   public pause(): void {
@@ -471,7 +856,10 @@ export class ScanEnhancementService {
     job.settings = { ...next };
     if (invalidates) {
       await this.invalidateJob(job);
-      if (next.enabled) void this.pump();
+      // The job is what runs, not the global `enabled` flag (which is only
+      // set per book) — gating on it meant a model change silently stopped
+      // the enhancement.
+      if (job.enabled) void this.pump();
     }
   }
 
@@ -566,12 +954,37 @@ export class ScanEnhancementService {
 
     const displayedTarget = consider(displayed);
     if (displayedTarget) return displayedTarget;
-    for (const bookId of jobs.keys()) {
+    for (const bookId of this.targetOrder()) {
       if (bookId === displayed) continue;
       const t = consider(bookId);
       if (t) return t;
     }
     return null;
+  }
+
+  /**
+   * The order books are worked in: the one being read first, then the books
+   * of every series in reading order, then the rest.
+   *
+   * Series order matters — the whole point of the rolling window is that the
+   * chapters ahead of the reader are the ones that get enhanced next, so the
+   * reader never runs into an unenhanced chapter.
+   */
+  private targetOrder(): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const push = (id: string | null): void => {
+      if (id === null || seen.has(id)) return;
+      if (!this._jobs().has(id)) return;
+      seen.add(id);
+      out.push(id);
+    };
+    push(this._displayedBookId());
+    for (const series of this._series.values()) {
+      for (const id of series.bookIds) push(id);
+    }
+    for (const id of this._jobs().keys()) push(id);
+    return out;
   }
 
   private priorityOrder(pages: readonly Page[], current: number): number[] {
@@ -680,6 +1093,7 @@ export class ScanEnhancementService {
         enhancedUri: destinationUri,
         cacheKey,
         sourceHash,
+        bytes: await this.assets.sizeOf(destinationUri),
         error: null,
       });
       this._revision.update((r) => r + 1);
@@ -687,7 +1101,7 @@ export class ScanEnhancementService {
       return;
     }
 
-    const jobId = `job-${++job.jobCounter}`;
+    const jobId = `job-${++this.jobCounter}`;
 
     // A page re-enhanced with different settings (or a different format) leaves
     // the previous derivative behind. Remember it so it can be reclaimed.
@@ -722,10 +1136,15 @@ export class ScanEnhancementService {
         enhancedUri: result.destinationUri,
         cacheKey,
         sourceHash,
+        bytes: result.bytes,
         error: null,
       });
       this._revision.update((r) => r + 1);
       await this.syncForeground();
+      // The page just landed on disk: roll the series window so the budget
+      // still holds and the next book can be queued.
+      const series = this.seriesFor(job.bookId);
+      if (series !== undefined) this.rebalance(series);
       void this.pump(); // continue the queue
     } catch (err) {
       console.error('[enhance] pump → enhancePage FAILED', err);
@@ -788,6 +1207,7 @@ export class ScanEnhancementService {
         enhancedUri: null,
         sourceHash,
         cacheKey: cacheKeyString(key),
+        bytes: 0,
         error: null,
       });
     }
@@ -843,6 +1263,7 @@ export class ScanEnhancementService {
       enhancedUri: null,
       sourceHash: patch.sourceHash ?? '',
       cacheKey: patch.cacheKey ?? '',
+      bytes: 0,
       error: null,
     };
     const next = new Map(job.state);
@@ -946,9 +1367,15 @@ export class ScanEnhancementService {
       for (const st of parsed.pages ?? []) {
         // A non-complete page must be reprocessed; a complete one is verified.
         if (st.status === 'complete') {
-          map.set(st.index, st);
+          map.set(st.index, { ...st, bytes: typeof st.bytes === 'number' ? st.bytes : 0 });
         } else {
-          map.set(st.index, { ...st, status: 'pending', enhancedUri: null, error: null });
+          map.set(st.index, {
+            ...st,
+            status: 'pending',
+            enhancedUri: null,
+            bytes: 0,
+            error: null,
+          });
         }
       }
       // Ensure every page has an entry (covers books whose page count changed).
@@ -972,6 +1399,7 @@ export class ScanEnhancementService {
             enhancedUri: null,
             sourceHash,
             cacheKey: cacheKeyString(key),
+            bytes: 0,
             error: null,
           });
         }
@@ -1007,6 +1435,7 @@ export class ScanEnhancementService {
         enhancedUri: null,
         sourceHash,
         cacheKey: cacheKeyString(key),
+        bytes: 0,
         error: null,
       });
     }
