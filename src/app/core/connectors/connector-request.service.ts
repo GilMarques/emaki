@@ -4,11 +4,26 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 /**
  * Transport for connector requests.
  *
- * On native platforms it goes through `CapacitorHttp`, which bypasses the
- * WebView's CORS sandbox — required because most manga sites don't send
- * `Access-Control-Allow-Origin`. In the browser it falls back to plain
- * `fetch` (fine for CORS-friendly APIs like MangaDex; scraping sites that
- * block CORS will fail there — run the app on a device for those).
+ * Native platforms have two ways out of the WebView:
+ *
+ *  - `CapacitorHttp` runs outside the WebView sandbox, so it ignores CORS
+ *    entirely. That is what most manga sites need, because they send no
+ *    `Access-Control-Allow-Origin`.
+ *  - the WebView's own `fetch()`, which is a real browser request: it passes
+ *    bot checks that fingerprint the TLS handshake (ComicK answers a native
+ *    client with a 403 challenge) and it can read the providers that do send
+ *    CORS headers.
+ *
+ * So the WebView is tried first and the native client is the fallback. Which
+ * one works is remembered per host, because the answer only depends on the
+ * provider.
+ *
+ * In a browser the same CORS wall applies to `fetch()`, so web builds route
+ * every request through the local provider proxy (`scripts/provider-proxy.mjs`),
+ * which fetches the target server-side and returns the bytes with permissive
+ * CORS headers. The proxy base can be overridden at runtime by setting
+ * `window.__EMAKI_PROXY__` before the app boots, which is how a packaged
+ * desktop build points at its own bundled proxy.
  *
  * All methods throw on non-2xx responses. Binary downloads are returned as
  * Blobs with a mime type corrected from the file signature (sites frequently
@@ -17,6 +32,17 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 @Injectable({ providedIn: 'root' })
 export class ConnectorRequestService {
   private readonly native = Capacitor.isNativePlatform();
+
+  /** Base URL of the provider proxy; empty when the proxy is unavailable. */
+  private readonly proxyBase = this.readProxyBase();
+
+  /**
+   * Per host: can the WebView read the provider's responses?
+   *
+   * `true` — yes, use the WebView. `false` — no, use the native client.
+   * Unset means "not tried yet".
+   */
+  private readonly webReadable = new Map<string, boolean>();
 
   /** Fetch a URL as a UTF-8 string. */
   public async fetchText(url: string, headers: Record<string, string> = {}): Promise<string> {
@@ -48,16 +74,147 @@ export class ConnectorRequestService {
     headers: Record<string, string>,
   ): Promise<{ status: number; data: T }> {
     if (this.native) {
-      const response = await CapacitorHttp.get({ url, headers, responseType });
-      const data =
-        responseType === 'arraybuffer'
-          ? this.toArrayBuffer(response.data)
-          : this.toText(response.data);
-      return { status: response.status, data: data as T };
+      return this.nativeRaw<T>(url, responseType, headers);
     }
-    const response = await fetch(url, { headers });
+
+    const target = this.proxyUrl(url);
+    const response = await fetch(target, { headers: this.browserHeaders(headers) });
     const data = responseType === 'arraybuffer' ? await response.arrayBuffer() : await response.text();
     return { status: response.status, data: data as T };
+  }
+
+  /**
+   * Native transport: the WebView first, the platform HTTP client second.
+   *
+   * The WebView is a real browser, so it survives providers that challenge
+   * non-browser clients (ComicK) and can read the ones that send CORS
+   * headers. The platform client is the fallback for the scraping sites
+   * that send no CORS headers at all.
+   */
+  private async nativeRaw<T extends string | ArrayBuffer>(
+    url: string,
+    responseType: 'text' | 'arraybuffer',
+    headers: Record<string, string>,
+  ): Promise<{ status: number; data: T }> {
+    const host = this.hostOf(url);
+    if (this.webReadable.get(host) !== false) {
+      try {
+        const result = await this.webRaw<T>(url, responseType, headers);
+        this.webReadable.set(host, true);
+        return result;
+      } catch {
+        // The WebView could not read the response — fall through.
+      }
+    }
+
+    const response = await CapacitorHttp.get({
+      url,
+      headers: this.nativeHeaders(headers),
+      responseType,
+    });
+    const data =
+      responseType === 'arraybuffer'
+        ? this.toArrayBuffer(response.data)
+        : this.toText(response.data);
+    // The native client answered, so the WebView cannot read this provider.
+    if (this.webReadable.get(host) !== true) {
+      this.webReadable.set(host, false);
+    }
+    return { status: response.status, data: data as T };
+  }
+
+  /** A plain `fetch()` from inside the WebView. */
+  private async webRaw<T extends string | ArrayBuffer>(
+    url: string,
+    responseType: 'text' | 'arraybuffer',
+    headers: Record<string, string>,
+  ): Promise<{ status: number; data: T }> {
+    const response = await fetch(url, { headers: this.webHeaders(headers) });
+    const data = responseType === 'arraybuffer' ? await response.arrayBuffer() : await response.text();
+    return { status: response.status, data: data as T };
+  }
+
+  /** The host of a URL, used as the key for the per-provider decision. */
+  private hostOf(url: string): string {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  }
+
+  /**
+   * Route a URL through the provider proxy.
+   *
+   * The target travels as a query parameter so the proxy sees a plain
+   * same-origin-ish GET and can answer with permissive CORS headers.
+   */
+  private proxyUrl(url: string): string {
+    if (!this.proxyBase) {
+      throw new Error(
+        `Cannot reach "${url}": no provider proxy is configured. ` +
+          'Start the dev server with "npm start" (it runs scripts/provider-proxy.mjs) ' +
+          'or set window.__EMAKI_PROXY__ to a proxy base URL.',
+      );
+    }
+    return `${this.proxyBase}/?url=${encodeURIComponent(url)}`;
+  }
+
+  /**
+   * Headers for the proxy path.
+   *
+   * `user-agent` and `referer` are forbidden header names — the browser
+   * drops them — so the proxy supplies its own user agent, and a referer
+   * travels as `x-referer` (which the proxy maps back to `Referer`).
+   */
+  private browserHeaders(headers: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, value] of Object.entries(headers)) {
+      const lower = name.toLowerCase();
+      if (lower === 'user-agent' || lower === 'referer') continue;
+      out[name] = value;
+    }
+    return out;
+  }
+
+  /**
+   * Headers for a WebView request.
+   *
+   * Same as the proxy path minus `x-referer`: a browser cannot set a
+   * referer at all, and a custom header would only trigger a preflight the
+   * providers do not answer.
+   */
+  private webHeaders(headers: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, value] of Object.entries(headers)) {
+      const lower = name.toLowerCase();
+      if (lower === 'user-agent' || lower === 'referer' || lower === 'x-referer') continue;
+      out[name] = value;
+    }
+    return out;
+  }
+
+  /** Map `x-referer` onto the real `Referer` header for the native transport. */
+  private nativeHeaders(headers: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, value] of Object.entries(headers)) {
+      const lower = name.toLowerCase();
+      if (lower === 'x-referer') {
+        out['Referer'] = value;
+        continue;
+      }
+      out[name] = value;
+    }
+    return out;
+  }
+
+  /** Read the proxy base URL from the global override, or fall back to the dev default. */
+  private readProxyBase(): string {
+    const injected = (globalThis as { __EMAKI_PROXY__?: unknown }).__EMAKI_PROXY__;
+    if (typeof injected === 'string' && injected.length > 0) {
+      return injected.replace(/\/+$/, '');
+    }
+    return 'http://127.0.0.1:4300';
   }
 
   /**

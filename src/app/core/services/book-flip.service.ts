@@ -270,7 +270,12 @@ export class BookFlipService {
    */
   public refreshImages(): void {
     if (this.instance === null) return;
-    if (this._flipState() !== 'read') return;
+    // `null` is the state before the lib has reported one: the reader has not
+    // been touched yet, so it is as idle as 'read'. Requiring 'read' meant a
+    // freshly opened book never refreshed when an enhanced page landed or the
+    // user flipped to the originals.
+    const state = this._flipState();
+    if (state !== null && state !== 'read') return;
     if (this._turning()) return;
     const book = this.bookstore.state().book;
     if (book === null) return;
@@ -283,7 +288,12 @@ export class BookFlipService {
 
     const index = this._currentIndex();
     this.loadedUrls = urls;
-    this.instance.loadFromImages(urls);
+    // `loadFromImages` rebuilds the widget's UI: it inserts another wrapper +
+    // canvas into the block, and the old canvas stays on top, so the swapped
+    // pages render underneath the stale ones (the enhanced/original toggle
+    // looked like it did nothing). `updateFromImages` replaces the page
+    // collection in place and repaints the same canvas.
+    this.instance.updateFromImages([...urls]);
     this.instance.turnToPage(index);
   }
 

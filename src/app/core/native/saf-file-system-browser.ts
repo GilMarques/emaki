@@ -41,7 +41,7 @@ const ARCHIVE_EXT = /\.(cbz|cbr|cb7|cbt|cba|zip|rar|7z)$/i;
  *
  * Directory enumeration goes through the native plugin; page bytes are read via
  * `@capacitor/filesystem` (`content://` support, no `directory` arg) and wrapped
- * in object URLs exactly like the Tauri bridge does. Archives are out of scope
+ * in object URLs exactly like the desktop bridge does. Archives are out of scope
  * for mobile v1.
  */
 export class SafFileSystemBrowser implements FileSystemBrowser {
@@ -109,7 +109,7 @@ function kindFor(name: string, mime: string): FsEntry['kind'] {
   return 'other';
 }
 
-/** Convert a native SAF entry into a port `FsEntry`. Mirror Tauri: only archive
+/** Convert a native SAF entry into a port `FsEntry`. Only archive
  *  files (and folders that contain images — computed by the scanner, not here)
  *  are `isBook`; a bare image file is a page, not a book. */
 export function toFsEntry(e: SafEntry): FsEntry {

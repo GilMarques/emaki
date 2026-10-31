@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Fetch and verify Real-ESRGAN ONNX weights for the Tauri desktop backend.
+# Fetch and verify Real-ESRGAN ONNX weights for the desktop (WebGPU) backend.
 #
 # The published ONNX uses external-data weights (a separate .data file). This
 # script downloads the archive, INLINES the weights into a single self-contained
 # .onnx (requires python 'onnx'), verifies its SHA-256 against the pinned value,
-# and drops it into src-tauri/resources/models/.
+# and drops it into assets/models/.
 #
 # It refuses to proceed if a checksum is not pinned (prevents silent supply-chain
 # swaps) and prints the ONNX input/output shapes so you can see whether the model
@@ -21,7 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="$SCRIPT_DIR/models.manifest.json"
-TARGET_DIR="$REPO_ROOT/src-tauri/resources/models"
+TARGET_DIR="$REPO_ROOT/assets/models"
 MODE="fetch"
 ONLY=""
 

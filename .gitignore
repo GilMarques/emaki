@@ -75,3 +75,7 @@ Thumbs.db
 
 # Local CodeGraph index (per-machine)
 /.codegraph/
+
+# Local tooling artifacts
+.openchamber/
+__pycache__/

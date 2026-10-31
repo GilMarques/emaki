@@ -17,8 +17,8 @@ export interface Page {
 
 /**
  * Where a book's pages come from. v1 only has `preset` (a debug/web bundle
- * under `assets/`). `folder` is the later real-device shape (Tauri desktop,
- * Android SAF). Add `cbz` / `pdf` here when those formats land.
+ * under `assets/`). `folder` is the later real-device shape (desktop browser
+ * via the File System Access API, Android SAF). Add `cbz` / `pdf` here when those formats land.
  */
 export type BookSource =
   | { readonly type: 'preset'; basePath: string }

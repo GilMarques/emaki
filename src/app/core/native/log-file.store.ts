@@ -22,7 +22,7 @@ const ROTATED_FLAG = 'openviewer:logs-rotated';
  *
  * The log lives in `Directory.Data` (app-private, survives restarts, needs no
  * permission) and is written as JSON lines so a partially flushed tail can be
- * discarded line by line. On web/Tauri this class is inert — there is no
+ * discarded line by line. On the web this class is inert — there is no
  * persistent file to write into.
  */
 export class LogFileStore {

@@ -6,7 +6,7 @@ const ROOT_KEY = 'openviewer:library-root';
  * Remembers the user's chosen library root folder (a real filesystem path on
  * desktop). Persisted so the shelf rebuilds from the same folder across
  * restarts. No new dependency — `localStorage` is available in both the web
- * dev build and the Tauri webview.
+ * dev build and the Android webview.
  */
 @Injectable({ providedIn: 'root' })
 export class LibraryRootService {

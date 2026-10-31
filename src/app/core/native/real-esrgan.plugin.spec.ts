@@ -44,19 +44,19 @@ describe('RealEsrganPluginService (backend selection)', () => {
   });
 
   it('selects the first registered, available backend and delegates to it', async () => {
-    const tauri = fakeBackend('tauri', true);
+    const desktop = fakeBackend('desktop', true);
     TestBed.configureTestingModule({
       providers: [
         RealEsrganPluginService,
-        { provide: SCAN_ENHANCEMENT_BACKENDS, useValue: tauri, multi: true },
+        { provide: SCAN_ENHANCEMENT_BACKENDS, useValue: desktop, multi: true },
       ],
     });
     const svc = TestBed.inject(RealEsrganPluginService);
 
     const caps = await svc.getCapabilities();
     expect(caps.available).toBe(true);
-    expect(caps.models).toContain('tauri');
-    expect(tauri.calls).toContain('getCapabilities');
+    expect(caps.models).toContain('desktop');
+    expect(desktop.calls).toContain('getCapabilities');
 
     await svc.enhancePage({
       sourceUri: 'a',
@@ -69,10 +69,10 @@ describe('RealEsrganPluginService (backend selection)', () => {
       maxOutputWidth: 1800,
       jobId: 'j1',
     });
-    expect(tauri.calls).toContain('enhancePage');
+    expect(desktop.calls).toContain('enhancePage');
 
     await svc.cancelPage('j1');
-    expect(tauri.calls).toContain('cancelPage');
+    expect(desktop.calls).toContain('cancelPage');
   });
 
   it('ignores registered backends that report unavailable and falls through', async () => {

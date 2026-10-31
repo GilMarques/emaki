@@ -42,7 +42,7 @@ export class LogService implements OnDestroy {
   /** This session's entries, newest last. */
   public readonly entries = signal<readonly LogEntry[]>(getEntries());
 
-  /** Entries read back from the on-device file (empty on web/Tauri). */
+  /** Entries read back from the on-device file (empty on the web). */
   public readonly history = signal<readonly LogEntry[]>([]);
 
   /** True when there is a persistent log file (Capacitor native only). */

@@ -105,6 +105,28 @@ ov-book-spread {
    (Apple HIG min) but the visible glyph is smaller so it reads as
    "barely there". */
 
+/* Comparison toggle (enhanced ⇄ original). Floats over the page, clear of
+   the status bar, and stays out of the way until the book has enhanced
+   pages to compare against. */
+.enhance-compare {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 10px;
+  z-index: 20;
+  --background: rgba(0, 0, 0, 0.45);
+  --color: #fff;
+  --border-radius: 999px;
+  --box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+
+  ion-icon {
+    font-size: 0.95rem;
+  }
+}
+
 /* Pages menu: dimmed backdrop + bottom sheet with title, progress, thumbnails. */
 .pages-backdrop {
   position: absolute;

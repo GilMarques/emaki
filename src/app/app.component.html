@@ -85,21 +85,36 @@
         }
       </ion-content>
 
-      <ion-footer>
-        <ion-list class="menu-bottom" lines="none">
-          <ion-menu-toggle [autoHide]="false">
-            <ion-item
-              button
-              routerLink="/settings"
-              routerLinkActive="selected"
-              aria-label="Settings"
-              title="Settings"
-            >
-              <ion-icon aria-hidden="true" slot="start" name="settings"></ion-icon>
-              <ion-label>Settings</ion-label>
-            </ion-item>
-          </ion-menu-toggle>
-        </ion-list>
+      <ion-footer class="menu-footer">
+        <div class="menu-bottom">
+          <a
+            class="menu-bottom-icon"
+            routerLink="/settings"
+            routerLinkActive="selected"
+            aria-label="Settings"
+            title="Settings"
+            (click)="closeDrawer()"
+          >
+            <ion-icon aria-hidden="true" name="settings"></ion-icon>
+          </a>
+
+          <!-- Docked: opens the devices popover above the button.
+               Drawer layout: goes to Settings, where devices are managed. -->
+          <button
+            #devicesButton
+            type="button"
+            class="menu-bottom-devices"
+            [attr.aria-label]="devicesLabel()"
+            [title]="devicesLabel()"
+            (click)="openDevices($event)"
+          >
+            <ion-icon aria-hidden="true" name="phone-portrait-outline"></ion-icon>
+            <span class="label">Devices</span>
+            @if (devices().length > 0) {
+              <span class="count">{{ devices().length }}</span>
+            }
+          </button>
+        </div>
       </ion-footer>
     </ion-menu>
 
@@ -119,6 +134,53 @@
   >
     <ng-template>
       <ov-viewer />
+    </ng-template>
+  </ion-modal>
+
+  <!-- Device pairing, reachable from the sidebar's devices button (docked
+       layout) or from the Devices section on the Settings page (drawer
+       layout). The modals live here so both entry points share one instance. -->
+  <ion-popover
+    class="devices-popover"
+    [isOpen]="devicesOpen()"
+    [event]="devicesEvent()"
+    side="top"
+    alignment="start"
+    [showBackdrop]="false"
+    (didDismiss)="devicesOpen.set(false)"
+  >
+    <ng-template>
+      <ov-devices-menu
+        (add)="openAddDevice()"
+        (sendBook)="sendTo($event)"
+        (remove)="forget($event)"
+      />
+    </ng-template>
+  </ion-popover>
+
+  <ion-modal
+    class="device-modal"
+    [isOpen]="addDeviceOpen()"
+    (didDismiss)="addDeviceOpen.set(false)"
+  >
+    <ng-template>
+      <ov-add-device
+        [isOpen]="addDeviceOpen()"
+        (dismissed)="addDeviceOpen.set(false)"
+      />
+    </ng-template>
+  </ion-modal>
+
+  <ion-modal
+    class="device-modal"
+    [isOpen]="sendTarget() !== null"
+    (didDismiss)="sendTarget.set(null)"
+  >
+    <ng-template>
+      <ov-send-book
+        [device]="sendTarget()"
+        (dismissed)="sendTarget.set(null)"
+      />
     </ng-template>
   </ion-modal>
 

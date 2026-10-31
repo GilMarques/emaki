@@ -236,7 +236,7 @@ export class BookshelfPage {
       ? this.scanner.coverFor(folder)
       : this.firstCoverBelow(folder);
     if (raw === undefined) return undefined;
-    if (folder.id.startsWith('fs:')) {
+    if (this.filePages.needsResolve(raw)) {
       // Track the resolver revision so the cover re-renders once the blob/asset
       // URL is ready (fast path via convertFileSrc is synchronous anyway).
       this.filePages.revision();

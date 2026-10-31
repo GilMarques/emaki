@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 
 import { Connector } from './connector.base';
-import type { Chapter, Manga, PageRef } from './connector.model';
+import type { Chapter, Manga, PageRef, PageTransform } from './connector.model';
 
 const PATHS = ['/series', '/series/oneshot', '/series/finished'] as const;
 const ISSUE_PATH = /^\/(magazine|volume)\/\d+$/;
@@ -101,11 +101,12 @@ export class ShonenJumpPlusConnector extends Connector {
     if (!data.readableProduct.isPublic && !data.readableProduct.hasPurchased) {
       throw new Error(`The chapter '${chapter.title}' is neither public, nor purchased!`);
     }
-    if (data.readableProduct.pageStructure.choJuGiga === 'baku') {
-      throw new Error('Scrambled (baku) chapters are not supported');
-    }
+    // "baku" chapters are served as a shuffled 4x4 tile mosaic; the download
+    // path puts the tiles back in order before storing the page.
+    const transform: PageTransform | undefined =
+      data.readableProduct.pageStructure.choJuGiga === 'baku' ? 'baku' : undefined;
     return data.readableProduct.pageStructure.pages
       .filter((page) => page.type === 'main')
-      .map((page) => ({ url: this.getAbsolutePath(page.src, url) }));
+      .map((page) => ({ url: this.getAbsolutePath(page.src, url), transform }));
   }
 }

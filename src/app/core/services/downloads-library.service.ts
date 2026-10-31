@@ -100,6 +100,8 @@ export class DownloadsLibraryService {
   private pageUrl(d: ChapterDownload, index: number): string {
     const fileName = d.files[index] ?? `${String(index).padStart(3, '0')}.jpg`;
     const path = this.store.filePath(d.providerId, d.chapterId, fileName);
+    // Web has no file server: the page is stored under its relative path and
+    // `FilePageService` reads it back from the filesystem plugin's IndexedDB.
     if (!Capacitor.isNativePlatform()) return path;
     // convertFileSrc only maps absolute paths to the local file server; a
     // store-relative path would 404 in the WebView. Fall back to the relative

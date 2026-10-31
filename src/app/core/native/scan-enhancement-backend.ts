@@ -35,14 +35,14 @@ export interface ForegroundState {
 /**
  * Backend-agnostic contract for on-device (or in-browser) scan enhancement.
  *
- * Every concrete backend — Android/ncnn (Capacitor), desktop ONNX Runtime
- * (Tauri), or an in-browser WebGPU backend (onnxruntime-web) — implements this
+ * Every concrete backend — Android/ncnn (Capacitor), desktop ONNX Runtime,
+ * or an in-browser WebGPU backend (onnxruntime-web) — implements this
  * same interface. The Angular service depends ONLY on this interface, never
  * on a specific runtime, so a new backend is added by registering an adapter,
  * not by editing the service.
  */
 export interface ScanEnhancementBackend {
-  /** Stable id, e.g. `'capacitor'`, `'tauri'`, `'webgpu'`. */
+  /** Stable id, e.g. `'capacitor'`, `'webgpu'`. */
   readonly id: string;
   /** Cheap check for whether this backend can run in the current environment. */
   isAvailable(): boolean | Promise<boolean>;

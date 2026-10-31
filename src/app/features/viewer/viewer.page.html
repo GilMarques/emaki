@@ -56,6 +56,22 @@
     [zoom]="magnifierZoom()"
   />
 
+  <!-- Comparison aid: flip between the enhanced scans and the originals to
+       judge the difference page by page. Only shown when there is something
+       to compare against. -->
+  @if (canToggleEnhanced()) {
+    <ion-button
+      class="enhance-compare"
+      size="small"
+      [color]="showOriginal() ? 'medium' : 'primary'"
+      (click)="toggleEnhanced()"
+      [attr.aria-label]="showOriginal() ? 'Show enhanced scans' : 'Show original scans'"
+    >
+      <ion-icon slot="start" name="sparkles"></ion-icon>
+      {{ showOriginal() ? 'Original' : 'Enhanced' }}
+    </ion-button>
+  }
+
 </ion-content>
 
 @if (pagesOpen()) {

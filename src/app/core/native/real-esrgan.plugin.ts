@@ -12,11 +12,13 @@ import {
 } from './scan-enhancement-backend';
 import { CapacitorRealEsrganBackend } from './capacitor-real-esrgan.backend';
 import { WebFallbackBackend } from './web-fallback.backend';
+import { WebGpuEsrganBackend } from './webgpu-esrgan.backend';
 
 export type { EnhancePageArgs } from './scan-enhancement-backend';
 
 const DEFAULT_BACKENDS: ScanEnhancementBackend[] = [
   new CapacitorRealEsrganBackend(),
+  new WebGpuEsrganBackend(),
   new WebFallbackBackend(),
 ];
 
@@ -37,7 +39,7 @@ async function isAvailable(b: ScanEnhancementBackend): Promise<boolean> {
  * On first use it selects the first available backend (highest priority wins),
  * caches it, and delegates `getCapabilities` / `enhancePage` / `cancelPage`.
  *
- * Adding a new runtime (e.g. Tauri desktop ONNX Runtime, or an in-browser WebGPU
+ * Adding a new runtime (e.g. an in-browser WebGPU
  * backend) is just registering another `ScanEnhancementBackend` adapter — this
  * service and the rest of the app need no changes.
  */

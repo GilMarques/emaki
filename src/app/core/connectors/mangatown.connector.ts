@@ -10,8 +10,9 @@ const PAGE_DELAY_MS = 500;
  * MangaTown provider.
  *
  * Scrapes the site's HTML directory, chapter list and page selector. The page
- * selector's `<option>` values point straight at the chapter images, so no
- * headless-browser round trip (as in HakuNeko) is needed.
+ * selector's `<option>` values point at the per-page HTML documents rather
+ * than at the images, so each one is opened and its `img#image` picked up —
+ * the same two-step HakuNeko uses through its connector URIs.
  */
 @Injectable({ providedIn: 'root' })
 export class MangaTownConnector extends Connector {
@@ -34,6 +35,21 @@ export class MangaTownConnector extends Connector {
     return mangas;
   }
 
+  /**
+   * The site has its own search: `GET /search?name=…`, which answers with the
+   * same result markup as the directory.
+   */
+  protected override async _search(query: string): Promise<Manga[]> {
+    const term = query.trim();
+    if (!term) return this._getMangas();
+    const params = new URLSearchParams();
+    params.set('name', term);
+    const url = new URL(this.url + '/search');
+    url.search = params.toString();
+    const links = await this.fetchDOM(url.href, 'ul.manga_pic_list li p.title a');
+    return links.map((link) => this.toManga(link, url.href));
+  }
+
   protected override async _getChapters(manga: Manga): Promise<Chapter[]> {
     const url = this.url + manga.id;
     const items = await this.fetchDOM(url, 'ul.chapter_list li');
@@ -46,22 +62,43 @@ export class MangaTownConnector extends Connector {
       url,
       'div.manga_read_footer div.page_select select option',
     );
-    return options
+    const pageUrls = options
       .filter((option) => !option.getAttribute('value')?.endsWith('featured.html'))
-      .map((option) => ({
-        url: this.getAbsolutePath(option.getAttribute('value') ?? '', url),
-      }));
+      .map((option) => this.getAbsolutePath(option.getAttribute('value') ?? '', url));
+
+    const pages: PageRef[] = [];
+    for (const pageUrl of pageUrls) {
+      const image = await this.fetchPageImage(pageUrl);
+      if (image) {
+        pages.push({ url: image, referer: `${this.url}/` });
+      }
+    }
+    return pages;
   }
 
   // ─────────────────────────── Internals ───────────────────────────
 
+  /** Open one page document and pick the image it shows. */
+  private async fetchPageImage(pageUrl: string): Promise<string | undefined> {
+    const images = await this.fetchDOM(pageUrl, 'img#image');
+    const src = images[0]?.getAttribute('src');
+    if (!src) {
+      return undefined;
+    }
+    return this.getAbsolutePath(src, pageUrl);
+  }
+
   private async getMangaPage(page: number): Promise<Manga[]> {
     const url = `${this.url}${DIRECTORY}/0-0-0-0-0-0/${page}.htm`;
     const links = await this.fetchDOM(url, 'ul.manga_pic_list li p.title a');
-    return links.map((link) => ({
-      id: this.getRootRelativeOrAbsoluteLink(link, url),
+    return links.map((link) => this.toManga(link, url));
+  }
+
+  private toManga(link: Element, baseUrl: string): Manga {
+    return {
+      id: this.getRootRelativeOrAbsoluteLink(link, baseUrl),
       title: link.getAttribute('title')?.trim() ?? link.textContent?.trim() ?? '',
-    }));
+    };
   }
 
   private toChapter(item: Element, mangaTitle: string, baseUrl: string): Chapter {

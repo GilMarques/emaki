@@ -10,7 +10,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { IonContent, IonImg } from '@ionic/angular/standalone';
+import { IonButton, IonContent, IonIcon, IonImg } from '@ionic/angular/standalone';
 
 import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
 import type { Page } from '../../core/models/book.model';
@@ -51,7 +51,7 @@ interface PanExtents {
   selector: 'ov-viewer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonContent, IonImg, BookSpreadComponent, MagnifierComponent],
+  imports: [IonContent, IonImg, IonButton, IonIcon, BookSpreadComponent, MagnifierComponent],
   templateUrl: './viewer.page.html',
   styleUrls: ['./viewer.page.scss'],
   host: {
@@ -304,6 +304,22 @@ export class ViewerPage {
     const page = this.bookstore.currentPage();
     return page === null ? null : this.scan.displayUrlFor(page);
   });
+
+  /** True when the open book has enhanced pages to compare against. */
+  public readonly canToggleEnhanced = computed(() => {
+    // The revision moves whenever a page completes, so the button appears as
+    // soon as there is something to flip to.
+    this.scan.revision();
+    return this.scan.hasEnhancedPages(this.openBook()?.id ?? null);
+  });
+
+  /** True while the reader shows the original scans instead of the enhanced ones. */
+  public readonly showOriginal = this.scan.showOriginal;
+
+  /** Flip between the enhanced scans and the originals. */
+  public toggleEnhanced(): void {
+    this.scan.toggleOriginal();
+  }
 
   /** Magnification factor (live from Preferences). */
   public readonly magnifierZoom = computed(() => this.settings.settings().display.magnifierZoom);

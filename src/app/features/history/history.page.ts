@@ -147,7 +147,7 @@ export class HistoryPage {
   public coverFor(entry: HistoryEntry): string | undefined {
     const raw = this.shelf.byId(entry.bookId)?.coverUrl ?? entry.coverUrl;
     if (raw === undefined) return undefined;
-    if (entry.bookId.startsWith('fs:')) {
+    if (this.filePages.needsResolve(raw)) {
       // Track the resolver revision so the cover re-renders once its blob
       // URL is ready (the convertFileSrc fast path is synchronous anyway).
       this.filePages.revision();

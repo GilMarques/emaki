@@ -10,24 +10,23 @@ import { LIBRARY_SCANNER } from './app/core/native/library-scanner.port';
 import { AssetsPresetScanner } from './app/core/native/assets-preset.scanner';
 import { FileSystemLibraryScanner } from './app/core/native/filesystem-library.scanner';
 import { FILE_SYSTEM_BROWSER } from './app/core/native/file-system-browser.port';
-import { TauriFsBrowser } from './app/core/native/tauri-fs-browser';
+import { FileSystemAccessBrowser } from './app/core/native/fs-access-browser';
 import { SafFileSystemBrowser } from './app/core/native/saf-file-system-browser';
-import { UnavailableFsBrowser } from './app/core/native/unavailable-fs-browser';
-import {
-  SCAN_ENHANCEMENT_BACKENDS,
-  type ScanEnhancementBackend,
-} from './app/core/native/scan-enhancement-backend';
-import { TauriRealEsrganBackend } from './app/core/native/tauri-real-esrgan.backend';
-
-const hasTauri = (): boolean =>
-  typeof window !== 'undefined' &&
-  (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== undefined;
 
 /**
- * A real filesystem backend exists on desktop (Tauri) and on Android (SAF via
- * the `@openviewer/saf-browser` plugin). Web/debug keeps the preset manifest.
+ * A real filesystem backend exists on Android (SAF via the
+ * `@openviewer/saf-browser` plugin) and on the desktop (the File System Access
+ * API in Chrome/Edge). Browsers without that API keep the preset manifest.
  */
-const hasRealFs = (): boolean => hasTauri() || Capacitor.isNativePlatform();
+const hasRealFs = (): boolean => Capacitor.isNativePlatform() || isFileSystemAccessSupported();
+
+function isFileSystemAccessSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof (window as Window & { showDirectoryPicker?: unknown }).showDirectoryPicker ===
+      'function'
+  );
+}
 
 // Capture console output and uncaught errors before Angular starts, so a
 // failure during bootstrap still lands in the debug log.
@@ -44,16 +43,9 @@ bootstrapApplication(AppComponent, {
     },
     {
       provide: FILE_SYSTEM_BROWSER,
-      useClass: hasTauri()
-        ? TauriFsBrowser
-        : Capacitor.isNativePlatform()
-          ? SafFileSystemBrowser
-          : UnavailableFsBrowser,
-    },
-    {
-      provide: SCAN_ENHANCEMENT_BACKENDS,
-      useClass: TauriRealEsrganBackend as unknown as new () => ScanEnhancementBackend,
-      multi: true,
+      useClass: Capacitor.isNativePlatform()
+        ? SafFileSystemBrowser
+        : FileSystemAccessBrowser,
     },
   ],
 }).catch((err) => console.error(err));

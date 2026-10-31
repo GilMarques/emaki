@@ -5,3 +5,12 @@ ion-list-header {
   color: var(--ion-color-medium);
   padding-top: 16px;
 }
+
+/* On the docked layout devices are managed from the sidebar's devices
+   popover, so this section would only duplicate it. Below md (the drawer
+   layout) there is no popover: this is the device screen. */
+@media (min-width: 768px) {
+  .devices-section {
+    display: none;
+  }
+}

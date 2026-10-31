@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 
 import type { Book } from '../models/book.model';
+import { DownloadStore } from '../native/download-store';
 import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 
 /**
@@ -10,7 +11,7 @@ import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
  * On native, device files are served by Capacitor's local file server
  * (`convertFileSrc`) so the WebView streams them from disk — reading whole
  * pages through the bridge produces base64 strings that exhaust the JS heap on
- * large (enhanced) pages. Everything else (SAF `content://`, Tauri) falls back
+ * large (enhanced) pages. Everything else (SAF `content://`, desktop) falls back
  * to reading the bytes and wrapping them in an object URL, cached by path and
  * revoked on `revokeAll()` (book close); extracted-archive temp dirs are
  * removed then too.
@@ -21,6 +22,7 @@ import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 @Injectable({ providedIn: 'root' })
 export class FilePageService {
   private readonly fs = inject(FILE_SYSTEM_BROWSER);
+  private readonly downloads = inject(DownloadStore);
   private readonly native = Capacitor.isNativePlatform();
 
   private readonly blobCache = new Map<string, string>();
@@ -49,13 +51,27 @@ export class FilePageService {
     return fsPath;
   }
 
+  /**
+   * True when `url` has to be passed through `displayUrl()` before rendering:
+   * real filesystem paths (SAF `content://`, File System Access handles) and
+   * app-private download storage. Plain asset paths (`assets/…`) are already
+   * loadable by the browser, so they return false.
+   */
+  public needsResolve(url: string): boolean {
+    return !isLoadableUrl(url) && !url.startsWith('assets/');
+  }
+
   /** Ensure `fsPath`'s bytes are loaded into a blob URL (no-op if cached). */
   public async ensure(fsPath: string): Promise<string> {
     if (isLoadableUrl(fsPath)) return fsPath;
     if (this.canStreamFromDisk(fsPath)) return Capacitor.convertFileSrc(fsPath);
     const cached = this.blobCache.get(fsPath);
     if (cached) return cached;
-    const blob = await this.fs.readFile(fsPath);
+    // Downloaded chapters live in the filesystem plugin's store on web (there
+    // is no file server to stream them from) and in the SAF root otherwise.
+    const blob = this.downloads.ownsPath(fsPath)
+      ? await this.downloads.readFile(fsPath)
+      : await this.fs.readFile(fsPath);
     const url = URL.createObjectURL(blob);
     this.blobCache.set(fsPath, url);
     this._revision.update((r) => r + 1);

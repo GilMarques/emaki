@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 
+import { LogService } from '../services/log.service';
 import { ConnectorRequestService } from './connector-request.service';
 import type { Chapter, Manga, PageRef } from './connector.model';
 
@@ -39,6 +40,21 @@ export abstract class Connector {
   };
 
   protected readonly requests: ConnectorRequestService = inject(ConnectorRequestService);
+
+  /** Debug log: provider failures are otherwise invisible on the device. */
+  protected readonly log: LogService = inject(LogService);
+
+  /**
+   * Report a swallowed provider failure.
+   *
+   * Connectors treat a failed page as "end of the listing" so one broken
+   * request cannot abort a whole run — but that also hides the reason, so
+   * every swallowed error is written to the debug log.
+   */
+  protected reportFailure(what: string, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.log.warn(`provider:${this.id}`, `${what} failed`, message);
+  }
 
   // ─────────────────────────── Public API ───────────────────────────
 

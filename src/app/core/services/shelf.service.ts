@@ -6,7 +6,7 @@ import type { Book } from '../models/book.model';
  * In-memory registry of books the user has scanned/registered.
  *
  * v1 keeps this in signals only — the app's real files live on device
- * (Tauri desktop / Android SAF) and persistence (Dexie/IndexedDB) lands with
+ * (desktop browser / Android SAF) and persistence (IndexedDB) lands with
  * the real-device scan phase. Preset books reload from the manifest each scan,
  * so nothing needs to survive a reload today.
  */

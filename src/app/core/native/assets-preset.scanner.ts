@@ -6,7 +6,7 @@ import type { LibraryScannerPort, LibraryTree } from './library-scanner.port';
  * Debug/web-only scanner: reads the generated `assets/preset-library.json`
  * manifest (see `scripts/gen-preset-books.mjs`). The manifest describes the
  * full folder tree; book leaves carry their page URLs so the ScannerService
- * can register them on scan. Real-device scanning (Tauri desktop, Android SAF)
+ * can register them on scan. Real-device scanning (desktop browser, Android SAF)
  * plugs in behind LIBRARY_SCANNER later and returns the same tree shape.
  */
 @Injectable()

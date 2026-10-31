@@ -24,7 +24,7 @@ already integrated.
 ## Default model
 
 The 2× net (`Real-ESRGANv2-anime`) is the **default** on mobile, matching the
-desktop (Tauri/ONNX) default. `nativeGetCapabilities` reports
+desktop (WebGPU/ONNX) default. `nativeGetCapabilities` reports
 `["realesrgan-v2-anime-x2","realesrgan-x4"]` (2× first); the TS layer snaps its
 selection to the first bundled model, so 2× is chosen out of the box. The reader's
 enhancement sheet (quick-actions → "Enhance scans") lets the user switch to 4×.
@@ -128,7 +128,7 @@ TS ↔ native boundary and could not be exercised without a device:
    returns `enhanced/<hash>.jpg`; the Java layer maps that to
    `<cache>/enhanced/<hash>.jpg` and the native result returns the **absolute**
    path. The reader resolves it via `FilePageService.displayUrl` →
-   `FILE_SYSTEM_BROWSER.readFile`. Today `FILE_SYSTEM_BROWSER` is the **Tauri**
+   `FILE_SYSTEM_BROWSER.readFile`. Today `FILE_SYSTEM_BROWSER` is the **desktop**
    implementation; on Capacitor there is no native FS port wired yet, so the
    enhanced blob URL may not resolve. Action: provide a Capacitor
    `FileSystemBrowser` (or have the plugin expose the bytes / use the Capacitor

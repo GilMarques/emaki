@@ -118,4 +118,4 @@ console.log('[scan] found', entries.length, 'entries');
 - One field is capped at 4000 characters; errors keep their stack.
 - Nothing leaves the device automatically, but logs can contain provider URLs,
   file paths and page names. Read before pasting into an issue.
-- On web and Tauri there is no file sink: use the in-app buffer and DevTools.
+- On the web there is no file sink: use the in-app buffer and DevTools.

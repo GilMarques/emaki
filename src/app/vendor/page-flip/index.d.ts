@@ -67,6 +67,8 @@ export class PageFlip {
   destroy(): void;
   update(): void;
   loadFromImages(imagesHref: string[]): void;
+  /** Swap the page images in place, keeping the widget's canvas and page. */
+  updateFromImages(imagesHref: string[]): void;
   loadFromHTML(items: NodeListOf<HTMLElement> | HTMLElement[]): void;
   turnToPage(page: number): void;
   flipNext(corner?: string): void;

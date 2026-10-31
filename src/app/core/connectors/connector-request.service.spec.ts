@@ -4,6 +4,11 @@ describe('ConnectorRequestService', () => {
   let service: ConnectorRequestService;
   let fetchSpy: jasmine.Spy;
 
+  /** The URL the service is expected to hand to `fetch` for a target. */
+  function proxied(target: string): string {
+    return `http://127.0.0.1:4300/?url=${encodeURIComponent(target)}`;
+  }
+
   beforeEach(() => {
     service = new ConnectorRequestService();
     fetchSpy = spyOn(window, 'fetch');
@@ -12,7 +17,7 @@ describe('ConnectorRequestService', () => {
   it('fetches text on 2xx', async () => {
     fetchSpy.and.resolveTo(new Response('hello', { status: 200 }));
     await expectAsync(service.fetchText('https://example.org/a')).toBeResolvedTo('hello');
-    expect(fetchSpy).toHaveBeenCalledWith('https://example.org/a', jasmine.any(Object));
+    expect(fetchSpy).toHaveBeenCalledWith(proxied('https://example.org/a'), jasmine.any(Object));
   });
 
   it('rejects on non-2xx status', async () => {
@@ -27,6 +32,17 @@ describe('ConnectorRequestService', () => {
     await expectAsync(service.fetchJson<{ ok: boolean }>('https://example.org/a')).toBeResolvedTo({
       ok: true,
     });
+  });
+
+  it('drops the user-agent header the browser would refuse to send', async () => {
+    fetchSpy.and.resolveTo(new Response('hello', { status: 200 }));
+    await service.fetchText('https://example.org/a', {
+      'user-agent': 'Mozilla/5.0',
+      accept: 'text/html',
+    });
+    const headers = fetchSpy.calls.mostRecent().args[1]?.headers as Record<string, string>;
+    expect(headers['user-agent']).toBeUndefined();
+    expect(headers['accept']).toBe('text/html');
   });
 
   it('sniffs the real mime type of a binary body', async () => {

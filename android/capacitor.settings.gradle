@@ -2,6 +2,9 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
 
+include ':openviewer-sync-endpoint'
+project(':openviewer-sync-endpoint').projectDir = new File('../native/sync-endpoint/android')
+
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')
 
@@ -17,8 +20,8 @@ project(':capacitor-keyboard').projectDir = new File('../node_modules/@capacitor
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../node_modules/@capacitor/status-bar/android')
 
-include ':openviewer-saf-browser'
-project(':openviewer-saf-browser').projectDir = new File('../native/saf-browser/android')
-
 include ':openviewer-real-esrgan'
 project(':openviewer-real-esrgan').projectDir = new File('../native/real-esrgan/android')
+
+include ':openviewer-saf-browser'
+project(':openviewer-saf-browser').projectDir = new File('../native/saf-browser/android')

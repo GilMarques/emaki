@@ -5,14 +5,14 @@
   "homepage": "https://ionicframework.com/",
   "scripts": {
     "ng": "ng",
-    "start": "node scripts/gen-preset-books.mjs && ng serve",
+    "start": "node scripts/dev.mjs",
+    "proxy": "node scripts/provider-proxy.mjs",
     "build": "node scripts/gen-preset-books.mjs && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
     "presets:gen": "node scripts/gen-preset-books.mjs",
-    "logs:pull": "bash scripts/pull-logs.sh",
-    "tauri": "tauri"
+    "logs:pull": "bash scripts/pull-logs.sh"
   },
   "private": true,
   "dependencies": {
@@ -32,10 +32,14 @@
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/status-bar": "8.0.3",
     "@ionic/angular": "^8.0.0",
-    "@openviewer/saf-browser": "file:native/saf-browser",
     "@openviewer/real-esrgan": "file:native/real-esrgan",
+    "@openviewer/saf-browser": "file:native/saf-browser",
+    "@openviewer/sync-endpoint": "file:native/sync-endpoint",
     "ionicons": "^7.0.0",
+    "jsqr": "^1.4.0",
+    "onnxruntime-web": "^1.31.1",
     "page-flip": "^2.0.7",
+    "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.15.0"
@@ -53,7 +57,6 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "8.5.0",
     "@ionic/angular-toolkit": "^12.0.0",
-    "@tauri-apps/cli": "^2",
     "@types/jasmine": "~5.1.0",
     "@types/page-flip": "^2.0.4",
     "@typescript-eslint/eslint-plugin": "^8.18.0",

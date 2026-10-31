@@ -13,9 +13,10 @@ import {
  *     drawn (full stage in single layout, left/right half in dual spread).
  *   - Pointer coords map to a fractional position inside that rect, then to
  *     natural image pixels (srcX, srcY).
- *   - A square window (~44% of min(vw, vh)) docks at the corner opposite
- *     the pointer. CSS background-image samples the page URL; background-size
- *     and background-position centre srcX/srcY under the loupe centre.
+ *   - A large window (60% of the viewport width and height) docks at the
+ *     corner opposite the pointer. CSS background-image samples the page URL;
+ *     background-size and background-position centre srcX/srcY under the
+ *     loupe centre.
  */
 @Component({
   selector: 'ov-magnifier',
@@ -32,8 +33,8 @@ import {
         [style.background-image]="backgroundImage()"
         [style.background-size]="backgroundSize()"
         [style.background-position]="backgroundPosition()"
-        [style.width.px]="loupeSizePx()"
-        [style.height.px]="loupeSizePx()"
+        [style.width.px]="loupeWidthPx()"
+        [style.height.px]="loupeHeightPx()"
         aria-hidden="true"
       ></div>
     }
@@ -86,14 +87,21 @@ export class MagnifierComponent {
   public readonly viewportWidth = input<number>(0);
   public readonly viewportHeight = input<number>(0);
 
-  /** Loupe window side length — ~44% of the smaller viewport axis. */
-  private static readonly LOUPE_VIEWPORT_FRACTION = 0.44;
+  /** Loupe window size — 60% of the viewport on each axis. */
+  private static readonly LOUPE_VIEWPORT_FRACTION = 0.6;
 
-  public readonly loupeSizePx = computed(() => {
+  /** Loupe window width in CSS px (60% of the viewport width). */
+  public readonly loupeWidthPx = computed(() => {
     const vw = this.viewportWidth();
+    if (vw === 0) return 240;
+    return Math.round(vw * MagnifierComponent.LOUPE_VIEWPORT_FRACTION);
+  });
+
+  /** Loupe window height in CSS px (60% of the viewport height). */
+  public readonly loupeHeightPx = computed(() => {
     const vh = this.viewportHeight();
-    if (vw === 0 || vh === 0) return 160;
-    return Math.round(Math.min(vw, vh) * MagnifierComponent.LOUPE_VIEWPORT_FRACTION);
+    if (vh === 0) return 240;
+    return Math.round(vh * MagnifierComponent.LOUPE_VIEWPORT_FRACTION);
   });
 
   public readonly visible = computed(() => {
@@ -157,9 +165,10 @@ export class MagnifierComponent {
     const nw = this.naturalWidth();
     const nh = this.naturalHeight();
     const z = this.zoom();
-    const half = this.loupeSizePx() / 2;
+    const halfW = this.loupeWidthPx() / 2;
+    const halfH = this.loupeHeightPx() / 2;
     const srcX = frac.fx * nw;
     const srcY = frac.fy * nh;
-    return `${-srcX * z + half}px ${-srcY * z + half}px`;
+    return `${-srcX * z + halfW}px ${-srcY * z + halfH}px`;
   });
 }

@@ -95,7 +95,7 @@ export interface EnhancementCacheKey {
 }
 
 /** Backend reported by the native bridge. */
-export type EnhancementBackend = 'vulkan' | 'cpu' | 'none';
+export type EnhancementBackend = 'vulkan' | 'cpu' | 'webgpu' | 'none';
 
 /** What the device can actually do, reported once at enable time. */
 export interface EnhancementCapabilities {

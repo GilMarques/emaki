@@ -19,23 +19,35 @@ export interface ArchiveInfo {
 }
 
 /**
- * Backend that lets the shelf roam the real filesystem. The Tauri build provides
- * `TauriFsBrowser` (real). The debug/web build provides `UnavailableFsBrowser`
- * so the `Files` tab stays hidden and the preset Library is unaffected.
+ * Backend that lets the shelf roam the real filesystem. Android provides
+ * `SafFileSystemBrowser` (SAF); the desktop provides `FileSystemAccessBrowser`
+ * (File System Access API in Chrome/Edge). Browsers without either API get a
+ * browser whose `isAvailable()` is false, so the `Files` tab stays hidden and
+ * the preset Library is unaffected.
  *
- * `convertFileSrc` is optional: when the Tauri host exposes it (global Tauri),
- * pages are served lazily by path (no byte preloading); otherwise the resolver
- * falls back to reading bytes and serving blob URLs.
+ * `convertFileSrc` is optional: when the host can serve a file by path it is
+ * used to avoid preloading bytes; otherwise the resolver reads the bytes and
+ * serves blob URLs.
  */
 export interface FileSystemBrowser {
   isAvailable(): boolean;
   pickDirectory(): Promise<string | null>;
+  /**
+   * Re-attach to a previously picked folder without prompting, when the
+   * backend can persist handles. Returns the root path or null.
+   */
+  restoreRoot?(): Promise<string | null>;
   listDirectory(path: string): Promise<readonly FsEntry[]>;
   readFile(path: string): Promise<Blob>;
   /** Byte size of a file at `path`, or null when it can't be stat'ed. */
   stat(path: string): Promise<number | null>;
   openArchive(path: string): Promise<ArchiveInfo>;
   cleanupArchive(tempDir: string): Promise<void>;
+  /**
+   * Write bytes to a path, creating parent folders as needed. Optional:
+   * read-only backends (Android SAF without a persistable write grant) omit it.
+   */
+  writeFile?(path: string, data: Blob): Promise<void>;
   convertFileSrc?(path: string): string | null;
 }
 

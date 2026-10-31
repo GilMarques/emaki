@@ -3,8 +3,12 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
 import type { EnhancementCacheKey } from '../models/scan-enhancement.model';
+import { APP_STORAGE_DIR } from '../native/download-store';
 
 const ENHANCED_DIR = 'enhanced';
+
+/** Derivatives written by the browser backend, under the app's page storage. */
+const WEB_ENHANCED_DIR = `${APP_STORAGE_DIR}/_enhanced`;
 
 /** Where native derivatives physically live. The Android plugin maps
  *  `enhanced/<name>` to `<app cache>/enhanced/<name>`, i.e. Directory.Cache —
@@ -51,40 +55,41 @@ export function cacheKeyString(key: EnhancementCacheKey): string {
  * Owns the local derivative store: where enhanced pages live, how they are
  * named, and how they are cleaned up. Originals are never referenced here.
  *
- * Web builds use an in-memory map (so the queue/cache logic is unit-testable
- * without a device). On a native platform we additionally honor real files via
- * `@capacitor/filesystem` so derivatives survive process restarts and can be
- * evicted under storage pressure. The service never assumes a raw filesystem
- * path — URIs are passed through to the native bridge.
+ * Native derivatives are real files in the app cache (written by the plugin).
+ * Web derivatives are files too, in the app's page storage (IndexedDB via
+ * `@capacitor/filesystem`), so they survive a reload and can be evicted under
+ * the series budget. The service never assumes a raw filesystem path — URIs
+ * are passed through to the bridge.
  */
 @Injectable({ providedIn: 'root' })
 export class PageAssetService {
   private readonly memory = new Map<string, true>();
 
-  /** Build the destination URI for a derivative. On native this resolves to a
-   *  real app-owned file; in web it is a logical identifier (never persisted).
+  /** Build the destination URI for a derivative.
    *
-   *  Native (Capacitor/Android) derivatives are WebP: the platform encoder
-   *  writes about half the bytes of a baseline JPEG at the same perceptual
-   *  quality. Desktop (Tauri/ONNX) still writes PNG.
+   *  Native (Capacitor/Android) derivatives are WebP files in the cache dir
+   *  (`enhanced/<hash>.webp`), written by the plugin; the platform encoder
+   *  makes them about half the bytes of a baseline JPEG at the same
+   *  perceptual quality.
    *
-   *  On Tauri/desktop (not a Capacitor native platform) we write a REAL sibling
-   *  file in a `.enhanced` subfolder next to the source so the very same
-   *  file→blob-URL converter used for originals (FilePageService) can serve the
-   *  upscaled page to the canvas. The cache key is hashed into a safe filename
-   *  because book ids contain `/` and `:`. */
-  public buildDestinationUri(key: EnhancementCacheKey, sourceUrl = ''): string {
-    const extension = Capacitor.isNativePlatform() ? '.webp' : '.png';
-    const filename = `${filenameHash(cacheKeyString(key))}${extension}`;
+   *  On the web there is no file server, so derivatives go into the app's
+   *  page storage (`emaki/_enhanced/<hash>.webp`, IndexedDB through the
+   *  filesystem plugin) exactly like downloaded pages — `FilePageService`
+   *  already turns those into blob URLs for the reader.
+   *
+   *  The cache key is hashed into a safe filename because book ids contain
+   *  `/` and `:`. */
+  public buildDestinationUri(key: EnhancementCacheKey, _sourceUrl = ''): string {
+    const filename = `${filenameHash(cacheKeyString(key))}.webp`;
     if (Capacitor.isNativePlatform()) {
       return `${ENHANCED_DIR}/${filename}`;
     }
-    if (sourceUrl) {
-      const slash = Math.max(sourceUrl.lastIndexOf('/'), sourceUrl.lastIndexOf('\\'));
-      const dir = slash >= 0 ? sourceUrl.slice(0, slash) : '.';
-      return `${dir}/.enhanced/${filename}`;
-    }
-    return `enhanced://${filename}`;
+    return `${WEB_ENHANCED_DIR}/${filename}`;
+  }
+
+  /** True when `uri` is one of ours in the browser's page storage. */
+  private isWebStore(uri: string): boolean {
+    return uri.startsWith(`${WEB_ENHANCED_DIR}/`);
   }
 
   /** Record that a derivative exists (web memory map + best-effort native file). */
@@ -97,8 +102,12 @@ export class PageAssetService {
 
   public async exists(uri: string): Promise<boolean> {
     if (this.memory.has(uri)) return true;
-    if (!Capacitor.isNativePlatform()) return false;
     try {
+      if (this.isWebStore(uri)) {
+        await Filesystem.stat({ path: uri, directory: Directory.Data });
+        return true;
+      }
+      if (!Capacitor.isNativePlatform()) return false;
       await Filesystem.stat({ path: await this.relativeToCache(uri), directory: NATIVE_DIRECTORY });
       return true;
     } catch {
@@ -109,8 +118,12 @@ export class PageAssetService {
   /** Best-effort removal of a single derivative. Never throws. */
   public async delete(uri: string): Promise<void> {
     this.memory.delete(uri);
-    if (!Capacitor.isNativePlatform()) return;
     try {
+      if (this.isWebStore(uri)) {
+        await Filesystem.deleteFile({ path: uri, directory: Directory.Data });
+        return;
+      }
+      if (!Capacitor.isNativePlatform()) return;
       await Filesystem.deleteFile({
         path: await this.relativeToCache(uri),
         directory: NATIVE_DIRECTORY,
@@ -123,8 +136,12 @@ export class PageAssetService {
   /** Size of a derivative on disk, in bytes (0 when it can't be measured).
    *  The series budget is metered with these. */
   public async sizeOf(uri: string): Promise<number> {
-    if (!Capacitor.isNativePlatform()) return 0;
     try {
+      if (this.isWebStore(uri)) {
+        const stat = await Filesystem.stat({ path: uri, directory: Directory.Data });
+        return stat.size ?? 0;
+      }
+      if (!Capacitor.isNativePlatform()) return 0;
       const stat = await Filesystem.stat({
         path: await this.relativeToCache(uri),
         directory: NATIVE_DIRECTORY,
@@ -159,13 +176,27 @@ export class PageAssetService {
 
   /**
    * Evict derivatives until at most `budgetBytes` would remain, oldest-first.
-   * Returns the number of files removed. Real deletion is native-only; the web
-   * map is cleared wholesale because it is not the source of truth there.
+   * Returns the number of files removed. Web derivatives live in page storage
+   * and are metered/deleted the same way, through `sizeOf`/`delete`.
    */
   public async enforceBudget(uris: readonly string[], budgetBytes: number): Promise<number> {
     if (!Capacitor.isNativePlatform()) {
-      for (const u of uris) this.memory.delete(u);
-      return uris.length;
+      const sizes = new Map<string, number>();
+      let used = 0;
+      for (const uri of uris) {
+        const size = await this.sizeOf(uri);
+        sizes.set(uri, size);
+        used += size;
+      }
+      if (used <= budgetBytes) return 0;
+      let removed = 0;
+      for (const uri of uris) {
+        if (used <= budgetBytes) break;
+        used -= sizes.get(uri) ?? 0;
+        await this.delete(uri);
+        removed++;
+      }
+      return removed;
     }
     let removed = 0;
     let used = 0;

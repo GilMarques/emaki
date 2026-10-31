@@ -3,9 +3,10 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 
-import type { Chapter } from '../connectors/connector.model';
+import type { Chapter, PageRef } from '../connectors/connector.model';
 import { Connector } from '../connectors/connector.base';
 import { ConnectorRequestService } from '../connectors/connector-request.service';
+import { applyPageTransform } from '../connectors/page-transform';
 import { TaskManagerService } from '../tasks/task-manager.service';
 import { DownloadStore } from '../native/download-store';
 
@@ -45,8 +46,9 @@ const CHAPTER_START_DELAY_MS = 1500;
  * run inside the app instead. Consequence: transfers pause if the app is
  * killed, unlike the system downloader.)
  *
- * On web it falls back to a session-only blob download so `ionic serve`
- * still works.
+ * The web build uses the same store: `@capacitor/filesystem`'s web
+ * implementation persists the blobs in IndexedDB, and `FilePageService`
+ * serves them as blob URLs (there is no file server to stream from).
  *
  * Progress is reported to `TaskManagerService` (queued → processing →
  * done/error) and downloaded chapters are recorded in `DownloadStore`, which
@@ -188,11 +190,9 @@ export class DownloadService {
       const pageRefs = await provider.getPages(chapter);
       this.tasks.update(chapter.id, 'download', { total: pageRefs.length });
 
-      if (this.isNative) {
-        await this.downloadNative(item, pageRefs.map((p) => p.url));
-      } else {
-        await this.downloadWeb(item, pageRefs.map((p) => p.url));
-      }
+      // Same path on every platform: `@capacitor/filesystem` keeps the bytes
+      // in app-private storage on native and in IndexedDB on web.
+      await this.downloadPages(item, pageRefs);
 
       const stored = this.store.get(provider.id, chapter.id);
       const files = stored?.files ?? [];
@@ -217,46 +217,47 @@ export class DownloadService {
   }
 
   /** Fetch each page and write it to app-private storage. */
-  private async downloadNative(item: QueuedChapter, urls: readonly string[]): Promise<void> {
+  private async downloadPages(item: QueuedChapter, pages: readonly PageRef[]): Promise<void> {
     const { provider, chapter } = item;
     const done: string[] = [];
 
     // Start pages one at a time with a small delay between them so the
     // provider doesn't rate-limit a burst of simultaneous downloads.
-    for (let i = 0; i < urls.length; i++) {
+    for (let i = 0; i < pages.length; i++) {
       try {
-        const blob = await this.requests.fetchImage(urls[i]);
+        const referer = pages[i].referer;
+        let blob = await this.requests.fetchImage(
+          pages[i].url,
+          referer ? { 'x-referer': referer } : {},
+        );
+        const transform = pages[i].transform;
+        if (transform) {
+          blob = await applyPageTransform(blob, transform);
+        }
         const fileName = `${String(i).padStart(3, '0')}${extensionFor(blob.type)}`;
         await Filesystem.writeFile({
           path: this.store.filePath(provider.id, chapter.id, fileName),
           directory: Directory.Data,
-          data: await blobToBase64(blob),
+          // A Blob can't cross the native bridge, so native goes through
+          // base64; the web plugin stores the Blob as-is (no 33% tax).
+          data: this.isNative ? await blobToBase64(blob) : blob,
           recursive: true,
         });
         done.push(fileName);
         this.tasks.update(chapter.id, 'download', { done: done.length });
-      } catch {
-        // Page failed — skip it; the chapter records only what landed.
+      } catch (err) {
+        // Page failed — skip it; the chapter records only what landed. Logged
+        // because a silently short chapter looks like a working download.
+        console.warn(
+          `[download] skipping ${pages[i].url}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      if (i < urls.length - 1) await this.wait(PAGE_START_DELAY_MS);
+      if (i < pages.length - 1) await this.wait(PAGE_START_DELAY_MS);
     }
 
     if (done.length > 0) {
       await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, done);
     }
-  }
-
-  /** Browser fallback: fetch blobs, fake progress, store nothing on disk. */
-  private async downloadWeb(item: QueuedChapter, urls: readonly string[]): Promise<void> {
-    const { provider, chapter } = item;
-    // No real on-disk store on web — keep parity by recording an empty chapter
-    // so `isDownloaded` still flips (session-scoped). Files are virtual names.
-    const files: string[] = [];
-    for (let i = 0; i < urls.length; i++) {
-      files.push(`${String(i).padStart(3, '0')}.jpg`);
-      this.tasks.update(chapter.id, 'download', { done: i + 1 });
-    }
-    await this.store.saveChapter(provider.id, chapter.id, item.mangaTitle, item.title, files);
   }
 
   // ───────────────────────────── Pending persistence ─────────────────────────────

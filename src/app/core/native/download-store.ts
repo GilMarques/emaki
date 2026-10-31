@@ -7,6 +7,9 @@
  * The manifest is a small JSON index keyed by `providerId:chapterId` → list of
  * saved file names. It is what lets the app rehydrate which chapters are
  * available after a restart.
+ *
+ * On web the same paths go through `@capacitor/filesystem`'s IndexedDB-backed
+ * implementation, so a downloaded chapter survives a reload there too.
  */
 import { Injectable, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
@@ -25,6 +28,13 @@ export interface StoredChapter {
 
 const BASE_DIR = 'emaki';
 const STORAGE_KEY = 'emaki:downloads:v1';
+
+/**
+ * Root of the app's private page storage on every platform. Downloads and
+ * enhanced derivatives share it: both are page files that the reader resolves
+ * through the filesystem layer, and on web that layer is IndexedDB.
+ */
+export const APP_STORAGE_DIR = BASE_DIR;
 
 /**
  * On-disk storage for downloaded chapters. Uses `@capacitor/filesystem`
@@ -83,6 +93,24 @@ export class DownloadStore {
     return this._chapters().get(`${providerId}:${chapterId}`);
   }
 
+  /** True when `path` is one of ours (`emaki/<provider>/<chapter>/<file>`). */
+  public ownsPath(path: string): boolean {
+    return path.startsWith(`${BASE_DIR}/`);
+  }
+
+  /**
+   * Read a stored page back as a Blob.
+   *
+   * Native reads through the WebView's file server instead (see
+   * `FilePageService.canStreamFromDisk`); this is the web path, where
+   * `@capacitor/filesystem` keeps the bytes in IndexedDB and there is no
+   * server to stream from.
+   */
+  public async readFile(path: string): Promise<Blob> {
+    const { data } = await Filesystem.readFile({ path, directory: Directory.Data });
+    return typeof data === 'string' ? base64ToBlob(data, mimeFor(path)) : data;
+  }
+
   /** Record a finished chapter (all its files saved). */
   public async saveChapter(
     providerId: string,
@@ -103,16 +131,14 @@ export class DownloadStore {
     const next = new Map(this._chapters());
     next.delete(key);
     this._chapters.set(next);
-    if (this.native) {
-      try {
-        await Filesystem.rmdir({
-          path: this.chapterDir(providerId, chapterId),
-          directory: Directory.Data,
-          recursive: true,
-        });
-      } catch {
-        // ignore missing dir
-      }
+    try {
+      await Filesystem.rmdir({
+        path: this.chapterDir(providerId, chapterId),
+        directory: Directory.Data,
+        recursive: true,
+      });
+    } catch {
+      // ignore missing dir
     }
     await this.persist();
   }
@@ -135,7 +161,46 @@ export class DownloadStore {
         // leave null — page URLs fall back to relative paths
       }
     }
-    this._chapters.set(this.loadManifest());
+    let chapters = this.loadManifest();
+    if (!this.native) chapters = await this.pruneMissingFiles(chapters);
+    this._chapters.set(chapters);
+  }
+
+  /**
+   * Drop manifest entries whose files aren't in the browser store.
+   *
+   * The web build used to record downloads without keeping the bytes, so a
+   * manifest could point at files that never existed — those chapters then
+   * 404'd on every cover and page. Checking the first file is enough: a
+   * chapter is written page by page.
+   */
+  private async pruneMissingFiles(
+    chapters: ReadonlyMap<string, StoredChapter>,
+  ): Promise<ReadonlyMap<string, StoredChapter>> {
+    const kept = new Map(chapters);
+    let dropped = false;
+    for (const [key, chapter] of chapters) {
+      const first = chapter.files[0];
+      if (first === undefined) {
+        kept.delete(key);
+        dropped = true;
+        continue;
+      }
+      try {
+        await Filesystem.stat({
+          path: this.filePath(chapter.providerId, chapter.chapterId, first),
+          directory: Directory.Data,
+        });
+      } catch {
+        kept.delete(key);
+        dropped = true;
+      }
+    }
+    if (dropped) {
+      this._chapters.set(kept);
+      await this.persist();
+    }
+    return kept;
   }
 
   private loadManifest(): ReadonlyMap<string, StoredChapter> {
@@ -175,4 +240,21 @@ export class DownloadStore {
       }
     }
   }
+}
+
+/** MIME type from a stored page's file name. */
+function mimeFor(path: string): string {
+  if (path.endsWith('.png')) return 'image/png';
+  if (path.endsWith('.webp')) return 'image/webp';
+  if (path.endsWith('.gif')) return 'image/gif';
+  if (path.endsWith('.bmp')) return 'image/bmp';
+  return 'image/jpeg';
+}
+
+/** Decode a base64 payload (native reads, and older web stores) into a Blob. */
+function base64ToBlob(base64: string, mime: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }

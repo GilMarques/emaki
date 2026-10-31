@@ -29,9 +29,27 @@
                 "glob": "**/*.svg",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
+              },
+              {
+                "glob": "ort.webgpu.bundle.min.mjs",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
+              },
+              {
+                "glob": "ort-wasm-simd-threaded.asyncify.mjs",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
+              },
+              {
+                "glob": "ort-wasm-simd-threaded.asyncify.wasm",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
               }
             ],
-            "styles": ["src/global.scss", "src/theme/variables.scss"],
+            "styles": [
+              "src/global.scss",
+              "src/theme/variables.scss"
+            ],
             "scripts": [],
             "allowedCommonJsDependencies": [
               "page-flip"
@@ -112,9 +130,27 @@
                 "glob": "**/*.svg",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
+              },
+              {
+                "glob": "ort.webgpu.bundle.min.mjs",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
+              },
+              {
+                "glob": "ort-wasm-simd-threaded.asyncify.mjs",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
+              },
+              {
+                "glob": "ort-wasm-simd-threaded.asyncify.wasm",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "assets/ort"
               }
             ],
-            "styles": ["src/global.scss", "src/theme/variables.scss"],
+            "styles": [
+              "src/global.scss",
+              "src/theme/variables.scss"
+            ],
             "scripts": []
           },
           "configurations": {

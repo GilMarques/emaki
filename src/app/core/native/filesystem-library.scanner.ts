@@ -53,7 +53,13 @@ export class FileSystemLibraryScanner implements LibraryScannerPort {
   private readonly rootSvc = inject(LibraryRootService);
 
   async discover(): Promise<LibraryTree> {
-    const root = this.rootSvc.root();
+    let root = this.rootSvc.root();
+    // Desktop: the picked folder survives a reload (the handle is persisted),
+    // so restore it instead of asking for the folder again.
+    if (!root && this.fs.restoreRoot) {
+      root = await this.fs.restoreRoot();
+      if (root) this.rootSvc.setRoot(root);
+    }
     if (!root) {
       return { root: { id: 'root', name: 'Library', isBook: false, children: [] } };
     }

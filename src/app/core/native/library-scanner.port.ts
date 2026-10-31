@@ -29,7 +29,7 @@ export interface LibraryTree {
 /**
  * Backend that discovers the library's folder tree. v1 ships
  * `AssetsPresetScanner` (debug/web manifest). Real devices plug in behind this
- * token later: Tauri (desktop) and `@capacitor-community/saf` (Android) — they
+ * token later: the desktop browser (File System Access API) and SAF (Android) — they
  * just need to return the same `LibraryTree` shape.
  */
 export interface LibraryScannerPort {

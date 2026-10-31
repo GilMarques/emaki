@@ -140,6 +140,10 @@ export class ScanEnhancementService {
   private readonly _paused = signal(false);
   public readonly paused = this._paused.asReadonly();
 
+  /** Preview override: show the original scans instead of the enhanced ones. */
+  private readonly _showOriginal = signal(false);
+  public readonly showOriginal = this._showOriginal.asReadonly();
+
   /** The single running native job across all books, or null when idle. */
   private _activeSlot: ActiveSlot | null = null;
   /** Counter for native job ids. Must be unique across books: the id is the
@@ -223,13 +227,13 @@ export class ScanEnhancementService {
     const displayedId = this._displayedBookId();
     const book = this.bookstore.state().book;
     const fsFolder = book !== null && book.source?.type === 'folder';
-    if (displayedId !== null && this._capabilities().available) {
+    if (displayedId !== null && this._capabilities().available && !this._showOriginal()) {
       const job = this._jobs().get(displayedId);
       if (job?.enabled) {
         const s = job.state.get(page.index);
         if (isComplete(s)) {
           const uri = s!.enhancedUri!;
-          // Real on-disk derivatives (Tauri) must be turned into a loadable blob
+          // Real on-disk derivatives (desktop) must be turned into a loadable blob
           // URL like originals; logical URIs (web / future native) pass through.
           const out =
             uri.startsWith('enhanced://') || uri.startsWith('data:')
@@ -240,6 +244,37 @@ export class ScanEnhancementService {
       }
     }
     return fsFolder ? this.filePages.displayUrl(page.url) : page.url;
+  }
+
+  /**
+   * Show the original scans instead of the enhanced ones.
+   *
+   * A comparison aid: it flips the reader between the two so the difference
+   * can be judged page by page. Bumping the revision makes the viewer swap
+   * the images in place.
+   */
+  public toggleOriginal(): void {
+    this._showOriginal.update((v) => !v);
+    this._revision.update((r) => r + 1);
+  }
+
+  /** True when the open book has at least one enhanced page to compare with. */
+  public hasEnhancedPages(bookId: string | null): boolean {
+    if (bookId === null) return false;
+    const job = this._jobs().get(bookId);
+    if (job !== undefined) {
+      for (const s of job.state.values()) if (isComplete(s)) return true;
+      return false;
+    }
+    if (typeof localStorage === 'undefined') return false;
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + bookId);
+      if (raw === null) return false;
+      const parsed = JSON.parse(raw) as { pages?: EnhancementPageState[] };
+      return (parsed.pages ?? []).some((s) => isComplete(s));
+    } catch {
+      return false;
+    }
   }
 
   /** Progress for the open book (reader UI). */
@@ -306,6 +341,13 @@ export class ScanEnhancementService {
     }
     // Resolve capabilities first so the job captures a model the backend bundles.
     await this.refreshCapabilities();
+    // No backend (e.g. a browser without OffscreenCanvas): refuse instead of
+    // queueing work nothing can run — that used to leave a task at "Queued"
+    // with a spinner forever.
+    if (!this._capabilities().available) {
+      console.warn('[enhance] enable → no enhancement backend available');
+      return;
+    }
     const job = this.getOrCreateJob(book);
     // Upgrade a legacy persisted 4× job to the 2× default when a 2× is bundled.
     this.applyDefaultModel(job);
@@ -482,6 +524,10 @@ export class ScanEnhancementService {
    */
   public async enhanceSeries(seriesId: string, books: readonly Book[]): Promise<void> {
     await this.refreshCapabilities();
+    if (!this._capabilities().available) {
+      console.warn('[enhance] enhanceSeries → no enhancement backend available');
+      return;
+    }
     if (books.length === 0) return;
     const bookIds = books.map((b) => b.id);
     const restored = this._series.get(seriesId) ?? this.readSeries(seriesId);

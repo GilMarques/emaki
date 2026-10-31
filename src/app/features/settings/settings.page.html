@@ -8,12 +8,6 @@
 </ion-header>
 
 <ion-content>
-  <ion-list-header>Display</ion-list-header>
-  <ov-display-settings />
-
-  <ion-list-header>Filters</ion-list-header>
-  <ov-filters-settings />
-
   <ion-list-header>Enhancement</ion-list-header>
   <ion-list lines="inset">
     <ion-item>
@@ -36,6 +30,52 @@
     </ion-item>
   </ion-list>
 
+  <div class="devices-section">
+    <ion-list-header>Devices</ion-list-header>
+    <ion-list lines="inset">
+      @for (device of devices(); track device.id) {
+        <ion-item>
+          <ion-label>
+            <h2>{{ device.name }}</h2>
+            <p>
+              {{ modeLabels[device.mode] }} · {{ device.host }}:{{ device.port }}
+            </p>
+          </ion-label>
+          <ion-button slot="end" fill="outline" (click)="sendTo(device)">Send book</ion-button>
+          <ion-button slot="end" fill="clear" color="danger" (click)="forget(device)">
+            Remove
+          </ion-button>
+        </ion-item>
+      } @empty {
+        <ion-item>
+          <ion-label>
+            <h2>No devices yet</h2>
+            <p>
+              Pair a phone to hand it the pages you enhance on this computer.
+            </p>
+          </ion-label>
+        </ion-item>
+      }
+      <ion-item>
+        <ion-label>Add a device</ion-label>
+        <ion-button slot="end" (click)="openAddDevice()">Add</ion-button>
+      </ion-item>
+      @if (canPair) {
+        <ion-item>
+          <ion-label>
+            <h2>Pair a computer</h2>
+            <p>Show a pairing code another computer can scan.</p>
+          </ion-label>
+          <ion-button slot="end" fill="outline" (click)="openPairDevice()">Show code</ion-button>
+        </ion-item>
+      }
+    </ion-list>
+  </div>
+
+  @if (notice()) {
+    <ion-note class="notice">{{ notice() }}</ion-note>
+  }
+
   <ion-list-header>App</ion-list-header>
   <ion-list lines="inset">
     <ion-item>
@@ -56,4 +96,44 @@
       </ion-label>
     </ion-item>
   </ion-list>
+
+  <ion-modal
+    [isOpen]="addDeviceOpen()"
+    (didDismiss)="addDeviceOpen.set(false)"
+    cssClass="device-modal"
+  >
+    <ng-template>
+      <ov-add-device
+        [isOpen]="addDeviceOpen()"
+        (dismissed)="addDeviceOpen.set(false)"
+        (paired)="onPaired($event)"
+      ></ov-add-device>
+    </ng-template>
+  </ion-modal>
+
+  <ion-modal
+    [isOpen]="pairDeviceOpen()"
+    (didDismiss)="pairDeviceOpen.set(false)"
+    cssClass="device-modal"
+  >
+    <ng-template>
+      <ov-pair-device
+        [isOpen]="pairDeviceOpen()"
+        (dismissed)="pairDeviceOpen.set(false)"
+      ></ov-pair-device>
+    </ng-template>
+  </ion-modal>
+
+  <ion-modal
+    [isOpen]="sendTarget() !== null"
+    (didDismiss)="sendTarget.set(null)"
+    cssClass="device-modal"
+  >
+    <ng-template>
+      <ov-send-book
+        [device]="sendTarget()"
+        (dismissed)="sendTarget.set(null)"
+      ></ov-send-book>
+    </ng-template>
+  </ion-modal>
 </ion-content>

@@ -6,6 +6,10 @@
  * render directly.
  */
 
+import type { PageTransform } from './page-transform';
+
+export type { PageTransform };
+
 /** A single series as advertised by a provider. */
 export interface Manga {
   /** Provider-local stable identifier (usually a URL path or API GUID). */
@@ -31,6 +35,16 @@ export interface Chapter {
 export interface PageRef {
   readonly url: string;
   readonly alternates?: readonly string[];
+  /**
+   * Image fix-up the provider requires before the page can be shown, e.g.
+   * un-shuffling the "baku" tile scramble Shonen Jump + serves.
+   */
+  readonly transform?: PageTransform;
+  /**
+   * Site the image host expects to be called from. Some CDNs (MangaTown's
+   * `mangahere.org`) answer 403 without a matching `Referer`.
+   */
+  readonly referer?: string;
 }
 
 /** Shape of the response `@capacitor/core` returns for native requests. */

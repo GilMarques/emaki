@@ -32,7 +32,7 @@ Guidance for AI coding agents and contributors working on this repo.
 | Image rendering  | v1: `OffscreenCanvas` + WebGL Lanczos. v2: native Capacitor plugin wrapping `BitmapRegionDecoder` / `ImageDecoder` / `CGImageSource` |
 | Network sources  | `smb2`/`@marsaud/smb2` (SMB), `jsftp`, `ssh2-sftp-client`, OPDS = HTTP + Atom |
 | Cloud            | Official REST APIs + Capacitor `Browser` for OAuth                  |
-| Desktop (later)  | Tauri 2 (preferred) or Electron; reuse Angular shell                |
+| Desktop            | The web app in Chrome/Edge: File System Access API + WebGPU      |
 
 ## Repo layout
 
