@@ -126,6 +126,10 @@ ion-list-header {
   color: var(--ion-color-danger);
 }
 
+.error span {
+  display: block;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

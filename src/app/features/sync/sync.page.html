@@ -62,6 +62,29 @@
     <ion-note class="hint">
       Packs downloaded from this link stay on this device and open offline.
     </ion-note>
+
+    @if (remoteBooks().length > 0) {
+      <ion-list-header>Library</ion-list-header>
+      <ion-list lines="inset">
+        @for (book of remoteBooks(); track book.bookId) {
+          <ion-item>
+            <ion-icon slot="start" name="book-outline"></ion-icon>
+            <ion-label>
+              <h2>{{ book.title }}</h2>
+              <p>{{ metaFor(book) }}</p>
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    }
+
+    @if (problems().length > 0) {
+      <ion-note class="error">
+        @for (problem of problems(); track problem) {
+          <span>{{ problem }}</span>
+        }
+      </ion-note>
+    }
   } @else {
     <ion-list lines="inset">
       <ion-item>

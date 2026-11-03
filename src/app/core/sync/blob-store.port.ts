@@ -26,6 +26,19 @@ export interface BlobSink {
   write(chunk: Uint8Array): Promise<void>;
 }
 
+/**
+ * Raised when a key is not in the store.
+ *
+ * Callers that walk a store need to tell "this folder is not a book" apart
+ * from "this book is broken", and a message string cannot do that reliably.
+ */
+export class BlobNotFoundError extends Error {
+  constructor(key: string) {
+    super(`The shared folder has no "${key}".`);
+    this.name = 'BlobNotFoundError';
+  }
+}
+
 export interface BlobDownloadOptions {
   /** Aborts the transfer; the store must stop reading and release the stream. */
   readonly signal?: AbortSignal;

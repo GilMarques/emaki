@@ -166,8 +166,9 @@ server.
 
 1. **Sync page + storage target** — route, nav entry, `RemoteLibraryService` (link parsing,
    persistence), `DeviceUiService`. *Done.*
-2. **Pack format + manifest** — pack writer on the computer, `index.json` schema, reader that opens a
-   pack through the existing page services.
+2. **Pack format + manifest** — `index.json` schema and the catalogue that reads it *(done: format,
+   validation, `readRemoteCatalog`, Sync page listing)*; the pack **writer** on the computer is the
+   remaining half, together with a reader that opens a pack through the existing page services.
 3. **Download engine** — `BlobStore` port, MEGA folder-link implementation, list → choose → fetch
    with progress → local store. The `/sync` page grows a library section.
 4. **Journal** — Dexie tables (`books`, `reading`, `devices`, `journal`, `cursors`), portable ids at

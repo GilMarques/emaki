@@ -4,6 +4,7 @@ import type {
   BlobReader,
   BlobSink,
 } from './blob-store.port';
+import { BlobNotFoundError } from './blob-store.port';
 import type { RemoteLibrary } from './remote-library.service';
 
 /**
@@ -148,11 +149,11 @@ export class MegaFolderBlobReader implements BlobReader {
     for (const segment of key.split('/').filter((part) => part.length > 0)) {
       const children = node.children;
       if (children === undefined) {
-        throw new Error(`The shared folder has no "${key}".`);
+        throw new BlobNotFoundError(key);
       }
       const next = children.find((child) => child.name === segment);
       if (next === undefined) {
-        throw new Error(`The shared folder has no "${key}".`);
+        throw new BlobNotFoundError(key);
       }
       node = next;
     }

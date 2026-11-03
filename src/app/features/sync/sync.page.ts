@@ -18,8 +18,8 @@ import {
 
 import { MenuButtonComponent } from '../../shared/menu-button.component';
 import type { BlobReader } from '../../core/sync/blob-store.port';
-import { listFiles } from '../../core/sync/blob-store.port';
 import { blobReaderFor } from '../../core/sync/mega-folder.blob-reader';
+import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
 import { DeviceUiService } from '../../core/sync/device-ui.service';
 import { RemoteLibraryService } from '../../core/sync/remote-library.service';
 import { SyncService } from '../../core/sync/sync.service';
@@ -101,6 +101,9 @@ export class SyncPage {
   /** Result of the last folder check, and whether one is running. */
   public readonly checking = signal(false);
   public readonly checkResult = signal<string | null>(null);
+  /** Books the folder offers, and folders whose manifest we cannot trust. */
+  public readonly remoteBooks = signal<readonly RemoteBook[]>([]);
+  public readonly problems = signal<readonly string[]>([]);
   private reader: BlobReader | null = null;
 
   public onLink(event: CustomEvent): void {
@@ -124,15 +127,17 @@ export class SyncPage {
   public disconnect(): void {
     this.reader = null;
     this.checkResult.set(null);
+    this.remoteBooks.set([]);
+    this.problems.set([]);
     this.remote.forget();
   }
 
   /**
    * Ask the store what is actually in the shared folder.
    *
-   * Parsing the link only proves it is shaped like a link. This proves the
-   * folder is still shared and reachable — the difference between "connected"
-   * and "connected to something".
+   * Parsing the link only proves it is shaped like a link. This reads the
+   * folder, so the page can say what is there — the difference between
+   * "connected" and "connected to something".
    */
   public async check(): Promise<void> {
     const library = this.library();
@@ -141,18 +146,33 @@ export class SyncPage {
     this.checkResult.set(null);
     try {
       this.reader ??= blobReaderFor(library);
-      const files = await listFiles(this.reader);
-      this.checkResult.set(
-        files.length === 0
-          ? 'The folder is empty — nothing published yet.'
-          : `${files.length} file${files.length === 1 ? '' : 's'} available.`,
-      );
+      const catalog = await readRemoteCatalog(this.reader);
+      this.remoteBooks.set(catalog.books);
+      this.problems.set(catalog.problems);
+      this.checkResult.set(describeCatalog(catalog.books.length, library.handle));
     } catch (caught) {
       this.reader = null;
-      this.checkResult.set(caught instanceof Error ? caught.message : String(caught));
+      this.remoteBooks.set([]);
+      this.problems.set([]);
+      this.checkResult.set(describeFailure(caught));
     } finally {
       this.checking.set(false);
     }
+  }
+
+  /** Human size for a pack ("48.2 MB"). */
+  public sizeOf(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${Math.round(kb)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  }
+
+  /** Caption under a remote book: size, pages, and the pipeline if any. */
+  public metaFor(book: RemoteBook): string {
+    const pages = `${book.pageCount} page${book.pageCount === 1 ? '' : 's'}`;
+    const scale = book.scale === undefined ? '' : ` · enhanced ${book.scale}×`;
+    return `${pages} · ${this.sizeOf(book.packSize)}${scale}`;
   }
 
   public pairDevice(): void {
@@ -172,4 +192,19 @@ export class SyncPage {
     if (diff < 86_400_000) return `Seen ${Math.floor(diff / 3_600_000)}h ago`;
     return `Seen ${Math.floor(diff / 86_400_000)}d ago`;
   }
+}
+
+/** One line describing what the folder holds. */
+function describeCatalog(count: number, handle: string): string {
+  if (count === 0) return 'No books published in this folder yet.';
+  return `${count} book${count === 1 ? '' : 's'} available in ${handle}.`;
+}
+
+/** Turn a load or network failure into something a person can act on. */
+function describeFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Loading chunk|dynamically imported module/i.test(message)) {
+    return 'The MEGA client failed to load. Check the connection, then reload the app.';
+  }
+  return message;
 }
