@@ -25,14 +25,14 @@ import {
   IonTextarea,
 } from '@ionic/angular/standalone';
 
-import { QrService } from '../../core/sync/qr.service';
-import { SyncService } from '../../core/sync/sync.service';
+import { QrService } from '../core/sync/qr.service';
+import { SyncService } from '../core/sync/sync.service';
 import {
   SYNC_MODE_HINTS,
   SYNC_MODE_LABELS,
   type PairedDevice,
   type SyncMode,
-} from '../../core/sync/pairing.model';
+} from '../core/sync/pairing.model';
 
 /**
  * "Add a device" — pair this computer with a phone that is running the local

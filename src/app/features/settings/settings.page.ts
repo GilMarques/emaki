@@ -21,9 +21,9 @@ import {
 import { MenuButtonComponent } from '../../shared/menu-button.component';
 import { SettingsService } from '../../core/services/settings.service';
 import { SERIES_BUDGET_PRESETS } from '../../core/models/settings.model';
-import { AddDeviceComponent } from './add-device.component';
+import { AddDeviceComponent } from '../../shared/add-device.component';
 import { PairDeviceComponent } from './pair-device.component';
-import { SendBookComponent } from './send-book.component';
+import { SendBookComponent } from '../../shared/send-book.component';
 import { SyncService } from '../../core/sync/sync.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 import { canRunEndpoint } from '../../core/native/sync-endpoint.plugin';

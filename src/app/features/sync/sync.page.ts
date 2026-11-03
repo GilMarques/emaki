@@ -10,6 +10,7 @@ import {
   IonLabel,
   IonList,
   IonListHeader,
+  IonModal,
   IonNote,
   IonSpinner,
   IonTitle,
@@ -17,10 +18,11 @@ import {
 } from '@ionic/angular/standalone';
 
 import { MenuButtonComponent } from '../../shared/menu-button.component';
+import { AddDeviceComponent } from '../../shared/add-device.component';
+import { SendBookComponent } from '../../shared/send-book.component';
 import { MegaAccountService } from '../../core/sync/mega-account.service';
 import { PackPublisherService } from '../../core/sync/pack-publisher.service';
 import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
-import { DeviceUiService } from '../../core/sync/device-ui.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { ShelfService } from '../../core/services/shelf.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
@@ -48,18 +50,20 @@ import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.mod
     IonLabel,
     IonList,
     IonListHeader,
+    IonModal,
     IonNote,
     IonSpinner,
     IonTitle,
     IonToolbar,
     MenuButtonComponent,
+    AddDeviceComponent,
+    SendBookComponent,
   ],
   templateUrl: './sync.page.html',
   styleUrls: ['./sync.page.scss'],
 })
 export class SyncPage {
   private readonly sync = inject(SyncService);
-  private readonly deviceUi = inject(DeviceUiService);
   private readonly account = inject(MegaAccountService);
   private readonly shelf = inject(ShelfService);
   public readonly publisher = inject(PackPublisherService);
@@ -67,6 +71,10 @@ export class SyncPage {
   /** Devices paired with this one, for handing books over the LAN. */
   public readonly devices = this.sync.devices;
   public readonly modeLabels = SYNC_MODE_LABELS;
+
+  /** Pairing and send sheets. */
+  public readonly addDeviceOpen = signal(false);
+  public readonly sendTarget = signal<PairedDevice | null>(null);
 
   /** The MEGA account this device is signed in to. */
   public readonly signedIn = this.account.signedIn;
@@ -198,7 +206,15 @@ export class SyncPage {
   }
 
   public pairDevice(): void {
-    this.deviceUi.openAdd();
+    this.addDeviceOpen.set(true);
+  }
+
+  public closeSend(): void {
+    this.sendTarget.set(null);
+  }
+
+  public sendTo(device: PairedDevice): void {
+    this.sendTarget.set(device);
   }
 
   public forget(device: PairedDevice): void {

@@ -5,6 +5,12 @@
     </ion-buttons>
 
     <ion-title class="sync-title">Sync</ion-title>
+
+    <ion-buttons slot="end">
+      <ion-button (click)="pairDevice()" aria-label="Add a device" title="Add a device">
+        <ion-icon slot="icon-only" name="add"></ion-icon>
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
@@ -163,6 +169,15 @@
         <ion-button
           slot="end"
           fill="clear"
+          [attr.aria-label]="'Send a book to ' + device.name"
+          [title]="'Send a book to ' + device.name"
+          (click)="sendTo(device)"
+        >
+          <ion-icon slot="icon-only" name="book-outline"></ion-icon>
+        </ion-button>
+        <ion-button
+          slot="end"
+          fill="clear"
           color="danger"
           [attr.aria-label]="'Forget ' + device.name"
           (click)="forget(device)"
@@ -174,16 +189,36 @@
       <ion-item>
         <ion-label>
           <h2>No devices yet</h2>
-          <p>Pair your laptop or phone to share this library with it.</p>
+          <p>Use + to pair your laptop or phone with this one.</p>
         </ion-label>
       </ion-item>
     }
   </ion-list>
 
-  <div class="actions">
-    <ion-button fill="outline" (click)="pairDevice()">
-      <ion-icon slot="start" name="add"></ion-icon>
-      Pair a device
-    </ion-button>
-  </div>
+  <ion-modal
+    class="device-modal"
+    [isOpen]="addDeviceOpen()"
+    (didDismiss)="addDeviceOpen.set(false)"
+  >
+    <ng-template>
+      <ov-add-device
+        [isOpen]="addDeviceOpen()"
+        (dismissed)="addDeviceOpen.set(false)"
+        (paired)="addDeviceOpen.set(false)"
+      />
+    </ng-template>
+  </ion-modal>
+
+  <ion-modal
+    class="device-modal"
+    [isOpen]="sendTarget() !== null"
+    (didDismiss)="closeSend()"
+  >
+    <ng-template>
+      <ov-send-book
+        [device]="sendTarget()"
+        (dismissed)="closeSend()"
+      />
+    </ng-template>
+  </ion-modal>
 </ion-content>

@@ -58,18 +58,6 @@
               <ion-label>Browse</ion-label>
             </ion-item>
           </ion-menu-toggle>
-          <ion-menu-toggle [autoHide]="false">
-            <ion-item
-              button
-              routerLink="/sync"
-              routerLinkActive="selected"
-              aria-label="Sync"
-              title="Sync"
-            >
-              <ion-icon aria-hidden="true" slot="start" name="sync-outline"></ion-icon>
-              <ion-label>Sync</ion-label>
-            </ion-item>
-          </ion-menu-toggle>
         </ion-list>
 
         @if (backgroundTasks().length > 0) {
@@ -110,22 +98,21 @@
             <ion-icon aria-hidden="true" name="settings"></ion-icon>
           </a>
 
-          <!-- Docked: opens the devices popover above the button.
-               Drawer layout: goes to Settings, where devices are managed. -->
-          <button
-            #devicesButton
-            type="button"
-            class="menu-bottom-devices"
-            [attr.aria-label]="devicesLabel()"
-            [title]="devicesLabel()"
-            (click)="openDevices($event)"
+          <!-- Devices live on the Sync page; this is its shortcut. -->
+          <a
+            class="menu-bottom-sync"
+            routerLink="/sync"
+            routerLinkActive="selected"
+            aria-label="Sync"
+            title="Sync"
+            (click)="closeDrawer()"
           >
-            <ion-icon aria-hidden="true" name="phone-portrait-outline"></ion-icon>
-            <span class="label">Devices</span>
+            <ion-icon aria-hidden="true" name="sync-outline"></ion-icon>
+            <span class="label">Sync</span>
             @if (devices().length > 0) {
               <span class="count">{{ devices().length }}</span>
             }
-          </button>
+          </a>
         </div>
       </ion-footer>
     </ion-menu>
@@ -149,52 +136,7 @@
     </ng-template>
   </ion-modal>
 
-  <!-- Device pairing, reachable from the sidebar's devices button (docked
-       layout) or from the Devices section on the Settings page (drawer
-       layout). The modals live here so both entry points share one instance. -->
-  <ion-popover
-    class="devices-popover"
-    [isOpen]="devicesOpen()"
-    [event]="devicesEvent()"
-    side="top"
-    alignment="start"
-    [showBackdrop]="false"
-    (didDismiss)="devicesOpen.set(false)"
-  >
-    <ng-template>
-      <ov-devices-menu
-        (add)="openAddDevice()"
-        (sendBook)="sendTo($event)"
-        (remove)="forget($event)"
-      />
-    </ng-template>
-  </ion-popover>
-
-  <ion-modal
-    class="device-modal"
-    [isOpen]="deviceUi.addOpen()"
-    (didDismiss)="deviceUi.closeAdd()"
-  >
-    <ng-template>
-      <ov-add-device
-        [isOpen]="deviceUi.addOpen()"
-        (dismissed)="deviceUi.closeAdd()"
-      />
-    </ng-template>
-  </ion-modal>
-
-  <ion-modal
-    class="device-modal"
-    [isOpen]="sendTarget() !== null"
-    (didDismiss)="sendTarget.set(null)"
-  >
-    <ng-template>
-      <ov-send-book
-        [device]="sendTarget()"
-        (dismissed)="sendTarget.set(null)"
-      />
-    </ng-template>
-  </ion-modal>
+  <!-- Device modals live on the Sync page, which owns the device list. -->
 
   @if (grainOpacity() > 0) {
     <div class="grain-overlay" [style.opacity]="grainOpacity()" aria-hidden="true"></div>

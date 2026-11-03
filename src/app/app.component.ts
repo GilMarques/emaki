@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
-import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   IonApp,
   IonContent,
@@ -12,7 +12,6 @@ import {
   IonMenu,
   IonMenuToggle,
   IonModal,
-  IonPopover,
   IonRouterOutlet,
   IonSpinner,
   IonSplitPane,
@@ -28,12 +27,7 @@ import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { MenuStateService } from './core/services/menu-state.service';
 import { SyncService } from './core/sync/sync.service';
-import { DeviceUiService } from './core/sync/device-ui.service';
-import type { PairedDevice } from './core/sync/pairing.model';
 import { ViewerPage } from './features/viewer/viewer.page';
-import { AddDeviceComponent } from './features/settings/add-device.component';
-import { SendBookComponent } from './features/settings/send-book.component';
-import { DevicesMenuComponent } from './shared/devices-menu.component';
 
 @Component({
   selector: 'app-root',
@@ -53,16 +47,12 @@ imports: [
     IonMenu,
     IonMenuToggle,
     IonModal,
-    IonPopover,
     IonRouterOutlet,
     IonSpinner,
     IonSplitPane,
     IonTitle,
     IonToolbar,
     ViewerPage,
-    AddDeviceComponent,
-    SendBookComponent,
-    DevicesMenuComponent,
   ],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
@@ -72,28 +62,13 @@ export class AppComponent {
   private readonly bookstore = inject(BookstoreService);
   private readonly tasks = inject(TaskManagerService);
   private readonly sync = inject(SyncService);
-  private readonly router = inject(Router);
   private readonly menuController = inject(MenuController);
 
   /** Docked sidebar state (shared with every page's menu button). */
   public readonly menu = inject(MenuStateService);
 
-  /** Devices this computer may hand books to (shown in the sidebar popover). */
+  /** Devices this computer may hand books to (shown as a count on Sync). */
   public readonly devices = this.sync.devices;
-
-  /** Popover state for the sidebar's devices button (docked layout only). */
-  public readonly devicesOpen = signal(false);
-  public readonly devicesEvent = signal<Event | undefined>(undefined);
-
-  /** Device modal state, shared with the Sync page. */
-  public readonly deviceUi = inject(DeviceUiService);
-  public readonly sendTarget = signal<PairedDevice | null>(null);
-
-  /** Accessible label for the sidebar devices button. */
-  public readonly devicesLabel = computed(() => {
-    const count = this.devices().length;
-    return count === 0 ? 'Devices' : `Devices (${count})`;
-  });
 
   /** Background jobs in the side menu — downloads and enhancements mixed,
    *  newest first, at most five. */
@@ -126,44 +101,13 @@ export class AppComponent {
   public readonly isReaderOpen = computed(() => this.bookstore.state().book !== null);
 
   /**
-   * The sidebar's devices button.
+   * The sidebar's sync shortcut, on the drawer layout.
    *
-   * Docked layout: opens the devices popover above the button — the desktop
-   * has room for a menu, and the Settings page hides its Devices section.
-   * Drawer layout (phone): closes the drawer and goes to Settings, where the
-   * Devices section is the "add device" screen.
+   * Docked, the split pane leaves the menu in place. Below `md` the menu is a
+   * drawer, so navigating should close it.
    */
-  public openDevices(event: Event): void {
-    if (this.menu.docked()) {
-      this.devicesEvent.set(event);
-      this.devicesOpen.set(true);
-      return;
-    }
-    void this.menuController.close('start');
-    void this.router.navigateByUrl('/settings');
-  }
-
-  /** Close the drawer when a footer link navigates (no-op while docked). */
   public closeDrawer(): void {
     if (!this.menu.docked()) void this.menuController.close('start');
-  }
-
-  /** Pair a device from the sidebar popover. */
-  public openAddDevice(): void {
-    this.devicesOpen.set(false);
-    this.deviceUi.openAdd();
-  }
-
-  /** Forget a device from the sidebar popover. */
-  public forget(device: PairedDevice): void {
-    this.sync.forget(device.id);
-    this.devicesOpen.set(false);
-  }
-
-  /** Hand a book to a device picked in the sidebar popover. */
-  public sendTo(device: PairedDevice): void {
-    this.devicesOpen.set(false);
-    this.sendTarget.set(device);
   }
 
   /**

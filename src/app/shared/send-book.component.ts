@@ -15,9 +15,9 @@ import {
   IonSpinner,
 } from '@ionic/angular/standalone';
 
-import { ShelfService } from '../../core/services/shelf.service';
-import { SyncService } from '../../core/sync/sync.service';
-import type { PairedDevice } from '../../core/sync/pairing.model';
+import { ShelfService } from '../core/services/shelf.service';
+import { SyncService } from '../core/sync/sync.service';
+import type { PairedDevice } from '../core/sync/pairing.model';
 
 /**
  * "Send a book" — hand the enhanced pages of one book to a paired device.
