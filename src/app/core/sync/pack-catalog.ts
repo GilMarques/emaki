@@ -19,6 +19,8 @@ export interface RemoteBook {
   readonly folder: string;
   readonly pageCount: number;
   readonly packSize: number;
+  /** Preview file beside the pack, or null for packs written before covers. */
+  readonly cover: { readonly key: string; readonly mime: string } | null;
   /** Set when the pages are derivatives rather than originals. */
   readonly model?: string;
   readonly scale?: number;
@@ -79,12 +81,17 @@ async function readBook(
 }
 
 function toRemoteBook(folder: string, index: PackIndex): RemoteBook {
+  const prefix = folder === '' ? '' : `${folder}/`;
   return {
     bookId: index.bookId,
     title: index.title,
     folder,
     pageCount: index.pages.length,
     packSize: index.packSize,
+    cover:
+      index.cover === undefined
+        ? null
+        : { key: `${prefix}${index.cover.file}`, mime: index.cover.mime },
     model: index.model,
     scale: index.scale,
     createdAt: index.createdAt,

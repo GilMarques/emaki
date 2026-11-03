@@ -36,6 +36,14 @@ describe('buildPack', () => {
     expect(Array.from(pack.bytes)).toEqual([...encoder.encode('abcde')]);
   });
 
+  it('keeps the first page as the preview file', async () => {
+    const pack = await buildPack(sourceOf(['abc', 'de']));
+
+    expect(pack.cover?.file).toBe('cover.webp');
+    expect(pack.index.cover).toEqual({ file: 'cover.webp', mime: 'image/webp' });
+    expect(new TextDecoder().decode(pack.cover?.bytes)).toBe('abc');
+  });
+
   it('hashes every page so a download can be verified page by page', async () => {
     const pack = await buildPack(sourceOf(['abc']));
 

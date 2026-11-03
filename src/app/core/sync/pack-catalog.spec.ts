@@ -99,6 +99,21 @@ describe('readRemoteCatalog', () => {
     expect(catalog.problems[0]).toContain('bk-bad');
   });
 
+  it('points the preview at the file beside the pack', async () => {
+    const withCover = JSON.stringify({
+      ...JSON.parse(indexJson('bk:aaa', 'Akira v01', [5])),
+      cover: { file: 'cover.webp', mime: 'image/webp' },
+    });
+    const store = new FakeStore({ 'bk-aaa/index.json': withCover }, ['bk-aaa']);
+
+    const catalog = await readRemoteCatalog(store);
+
+    expect(catalog.books[0].cover).toEqual({
+      key: 'bk-aaa/cover.webp',
+      mime: 'image/webp',
+    });
+  });
+
   it('accepts a link that points straight at one book', async () => {
     const store = new FakeStore({
       'index.json': indexJson('bk:aaa', 'Akira v01', [5, 5]),

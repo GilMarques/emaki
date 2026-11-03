@@ -36,6 +36,11 @@ export interface PackIndex {
   readonly pages: readonly PackPage[];
   /** Byte length of `pages.pack`; must equal the end of the last page. */
   readonly packSize: number;
+  /**
+   * Preview image beside the pack: the first page, kept as a file of its own
+   * so a shelf can show covers without opening (or ranging into) the pack.
+   */
+  readonly cover?: { readonly file: string; readonly mime: string };
   /** Pipeline that produced the pages, when they are derivatives. */
   readonly model?: string;
   readonly scale?: number;
@@ -146,6 +151,10 @@ export function validatePackIndex(raw: unknown): PackIndexResult {
 
   const model = v['model'];
   const scale = v['scale'];
+  const cover = readCover(v['cover']);
+  if (cover === false) {
+    return { ok: false, reason: 'The index has an unusable cover entry.' };
+  }
 
   return {
     ok: true,
@@ -155,11 +164,24 @@ export function validatePackIndex(raw: unknown): PackIndexResult {
       title,
       pages,
       packSize,
+      ...(cover === null ? {} : { cover }),
       ...(typeof model === 'string' && model !== '' ? { model } : {}),
       ...(typeof scale === 'number' && Number.isFinite(scale) ? { scale } : {}),
       createdAt,
     },
   };
+}
+
+/** `null` when absent, `false` when present but malformed. */
+function readCover(raw: unknown): { file: string; mime: string } | null | false {
+  if (raw === undefined) return null;
+  if (typeof raw !== 'object' || raw === null) return false;
+  const cover = raw as Record<string, unknown>;
+  const file = cover['file'];
+  const mime = cover['mime'];
+  if (typeof file !== 'string' || file === '') return false;
+  if (typeof mime !== 'string' || mime === '') return false;
+  return { file, mime };
 }
 
 /**

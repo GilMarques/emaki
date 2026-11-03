@@ -44,6 +44,15 @@ export interface BuildPackOptions {
 export interface PackBuild {
   readonly index: PackIndex;
   readonly bytes: Uint8Array;
+  /** First page kept as a preview image, or null when there were no pages. */
+  readonly cover: PackCover | null;
+}
+
+/** The preview file a pack carries alongside it. */
+export interface PackCover {
+  readonly bytes: Uint8Array;
+  readonly mime: string;
+  readonly file: string;
 }
 
 const DEFAULT_MAX_BYTES = 512 * 1024 * 1024;
@@ -67,6 +76,7 @@ export async function buildPack(
   const pages: PackPage[] = [];
   const chunks: Uint8Array[] = [];
   let offset = 0;
+  let cover: PackCover | null = null;
 
   for (let index = 0; index < source.pageCount; index += 1) {
     if (options.signal?.aborted === true) throw abortError();
@@ -79,6 +89,12 @@ export async function buildPack(
       throw new Error(
         `"${source.title}" is larger than ${maxBytes} bytes; publish it in parts.`,
       );
+    }
+
+    // The first page doubles as the shelf preview: one extra small file beats
+    // asking every device to range into the pack for a thumbnail.
+    if (index === 0) {
+      cover = { bytes: page.bytes, mime: page.mime, file: coverFileName(page.mime) };
     }
 
     pages.push({
@@ -98,12 +114,31 @@ export async function buildPack(
     title: source.title,
     pages,
     packSize: offset,
+    ...(cover === null ? {} : { cover: { file: cover.file, mime: cover.mime } }),
     ...(options.model === undefined ? {} : { model: options.model }),
     ...(options.scale === undefined ? {} : { scale: options.scale }),
     createdAt: options.now ?? Date.now(),
   };
 
-  return { index, bytes: concat(chunks, offset) };
+  return { index, bytes: concat(chunks, offset), cover };
+}
+
+/** File name for a preview, chosen from the image type. */
+export function coverFileName(mime: string): string {
+  switch (mime.toLowerCase()) {
+    case 'image/webp':
+      return 'cover.webp';
+    case 'image/png':
+      return 'cover.png';
+    case 'image/jpeg':
+      return 'cover.jpg';
+    case 'image/gif':
+      return 'cover.gif';
+    case 'image/avif':
+      return 'cover.avif';
+    default:
+      return 'cover.bin';
+  }
 }
 
 /** The exact text that goes into `index.json`. */

@@ -32,6 +32,10 @@ import { ScannerService } from '../../core/services/scanner.service';
 import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { SettingsService } from '../../core/services/settings.service';
 import { ShelfService } from '../../core/services/shelf.service';
+import { MegaAccountService } from '../../core/sync/mega-account.service';
+import { PackPublisherService } from '../../core/sync/pack-publisher.service';
+import { RemoteShelfService } from '../../core/sync/remote-shelf.service';
+import type { RemoteBook } from '../../core/sync/pack-catalog';
 
 /**
  * Multiplier applied to the source page bytes to estimate the size of the
@@ -79,6 +83,23 @@ export class BookshelfPage {
   private readonly filePages = inject(FilePageService);
   private readonly enhance = inject(ScanEnhancementService);
   private readonly settings = inject(SettingsService);
+  private readonly remote = inject(RemoteShelfService);
+  private readonly account = inject(MegaAccountService);
+  private readonly publisher = inject(PackPublisherService);
+
+  /** Which shelf is showing: folders on this device, or the MEGA account. */
+  public readonly source = signal<'device' | 'mega'>('device');
+  public readonly signedIn = this.account.signedIn;
+  public readonly remoteBooks = this.remote.books;
+  public readonly remoteCovers = this.remote.covers;
+  public readonly remoteLoading = this.remote.loading;
+  public readonly remoteError = this.remote.error;
+  public readonly publishing = this.publisher.publishing;
+
+  /** Books on this device that could be published. */
+  public readonly publishableCount = computed(
+    () => this.publisher.publishable(this.shelf.books()).length,
+  );
 
   /** The folder-pick entry point only appears when a fs backend is present. */
   public readonly showFiles = computed(() => this.fs.isAvailable());
@@ -165,6 +186,38 @@ export class BookshelfPage {
 
   /** Confirmation toast message, or null when hidden. */
   public readonly toastMessage = signal<string | null>(null);
+
+  /** Switch between this device's folders and the MEGA account. */
+  public async onSource(event: CustomEvent): Promise<void> {
+    const value = event.detail?.value === 'mega' ? 'mega' : 'device';
+    this.source.set(value);
+    if (value === 'mega') await this.remote.refresh();
+  }
+
+  /** Publish every folder-backed book on this device, then show the shelf. */
+  public async publish(): Promise<void> {
+    if (this.publishing()) return;
+    try {
+      await this.publisher.publish(this.shelf.books(), await this.account.store());
+      const failed = this.publisher.error();
+      const done = this.publisher.published();
+      this.toastMessage.set(
+        failed ?? `Published ${done} book${done === 1 ? '' : 's'} to MEGA.`,
+      );
+      if (failed === null) {
+        this.source.set('mega');
+        await this.remote.refresh();
+      }
+    } catch (caught) {
+      this.toastMessage.set(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  /** Caption under a MEGA book: pages and pack size. */
+  public remoteMeta(book: RemoteBook): string {
+    const pages = `${book.pageCount} page${book.pageCount === 1 ? '' : 's'}`;
+    return `${pages} · ${formatBytes(book.packSize)}`;
+  }
 
   private isBookFolder(f: FsFolder): boolean {
     return f.isBook && this.scanner.isScanned(f.id);

@@ -283,6 +283,23 @@ ion-img.cover::part(image) {
   }
 }
 
+.remote-error {
+  margin-top: 8px !important;
+  color: var(--ion-color-danger);
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+/* This device / MEGA switch */
+
+.source-bar {
+  --min-height: 44px;
+  --padding-start: 10px;
+  --padding-end: 10px;
+  --background: var(--ion-background-color);
+  --border-width: 0;
+}
+
 /* Circular checkmark button replacing the sheet modals' "Done" text button. */
 .done-btn {
   --border-radius: 50%;

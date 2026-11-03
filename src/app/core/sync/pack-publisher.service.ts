@@ -4,7 +4,7 @@ import type { Book } from '../models/book.model';
 import { FILE_SYSTEM_BROWSER } from '../native/file-system-browser.port';
 import type { BlobStore } from './blob-store.port';
 import { bookPackSource } from './book-pack.source';
-import { indexPathFor, packPathFor } from './pack-index.model';
+import { indexPathFor, packFolderFor, packPathFor } from './pack-index.model';
 import { buildPack, serializePackIndex } from './pack-writer';
 
 /**
@@ -57,6 +57,13 @@ export class PackPublisherService {
         });
 
         await store.put(packPathFor(pack.index.bookId), pack.bytes, 'application/octet-stream');
+        if (pack.cover !== null) {
+          await store.put(
+            `${packFolderFor(pack.index.bookId)}/${pack.cover.file}`,
+            pack.cover.bytes,
+            pack.cover.mime,
+          );
+        }
         await store.put(
           indexPathFor(pack.index.bookId),
           new TextEncoder().encode(serializePackIndex(pack.index)),

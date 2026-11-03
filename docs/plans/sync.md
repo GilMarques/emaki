@@ -163,9 +163,11 @@ server.
 
 ## UI
 
-- `/sync` (done): MEGA sign-in, the account's `Emaki/` library, publish, paired devices.
-- Next on that page: a download action per book, and what is on this device versus what is only in
-  the account. Queue progress already has a home in the sidebar's Tasks section.
+- `/sync` (done): MEGA sign-in / account, connection health, paired devices.
+- `/library` (done): a **This device | MEGA** switch. MEGA shows the account's books as a grid with
+  previews; publishing is a header action on the device shelf.
+- Next on Library: a download action per MEGA book, and an on-device marker. Queue progress already
+  has a home in the sidebar's Tasks section.
 
 ## Phased steps
 

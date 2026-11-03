@@ -21,19 +21,16 @@ import { MenuButtonComponent } from '../../shared/menu-button.component';
 import { AddDeviceComponent } from '../../shared/add-device.component';
 import { SendBookComponent } from '../../shared/send-book.component';
 import { MegaAccountService } from '../../core/sync/mega-account.service';
-import { PackPublisherService } from '../../core/sync/pack-publisher.service';
-import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
 import { SyncService } from '../../core/sync/sync.service';
-import { ShelfService } from '../../core/services/shelf.service';
+import { RemoteShelfService } from '../../core/sync/remote-shelf.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 
 /**
- * Sync: the MEGA account that holds the library, and the devices that read it.
+ * Sync: the MEGA account this device reads from, and the devices it can hand
+ * books to over the LAN.
  *
- * Every device signs in to the same account and looks at the same `Emaki`
- * folder, so there is one code path and one place a book can come from. The
- * trade is explicit: a device that can read the library can also publish to
- * it, so this is not a read-only credential.
+ * The library itself lives on the Library page — publishing and previews
+ * belong where the books are, not in account settings.
  */
 @Component({
   selector: 'ov-sync',
@@ -65,8 +62,7 @@ import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.mod
 export class SyncPage {
   private readonly sync = inject(SyncService);
   private readonly account = inject(MegaAccountService);
-  private readonly shelf = inject(ShelfService);
-  public readonly publisher = inject(PackPublisherService);
+  private readonly remote = inject(RemoteShelfService);
 
   /** Devices paired with this one, for handing books over the LAN. */
   public readonly devices = this.sync.devices;
@@ -79,10 +75,6 @@ export class SyncPage {
   /** The MEGA account this device is signed in to. */
   public readonly signedIn = this.account.signedIn;
   public readonly accountEmail = computed(() => this.account.account()?.email ?? null);
-  /** How many shelf books could be published. */
-  public readonly publishableCount = computed(() =>
-    this.publisher.publishable(this.shelf.books()).length,
-  );
 
   /** Sign-in form state. */
   public readonly email = signal('');
@@ -91,18 +83,6 @@ export class SyncPage {
   public readonly needsCode = signal(false);
   public readonly signingIn = signal(false);
   public readonly accountError = signal<string | null>(null);
-
-  /** What the account holds, and whether a read is in flight. */
-  public readonly remoteBooks = signal<readonly RemoteBook[]>([]);
-  public readonly problems = signal<readonly string[]>([]);
-  public readonly loading = signal(false);
-  public readonly libraryError = signal<string | null>(null);
-
-  constructor() {
-    // A restored session is enough to show the library; a revoked one surfaces
-    // as an error with the sign-in form right above it.
-    if (this.signedIn()) void this.refresh();
-  }
 
   public onEmail(event: CustomEvent): void {
     this.email.set(String(event.detail?.value ?? ''));
@@ -133,7 +113,8 @@ export class SyncPage {
       this.password.set('');
       this.code.set('');
       this.needsCode.set(false);
-      await this.refresh();
+      // The shelf is read on the Library page; this just settles the health dot.
+      await this.account.probe();
     } catch (caught) {
       if (caught instanceof Error && caught.name === 'TwoFactorRequired') {
         this.needsCode.set(true);
@@ -148,63 +129,8 @@ export class SyncPage {
 
   public async signOut(): Promise<void> {
     await this.account.signOut();
-    this.remoteBooks.set([]);
-    this.problems.set([]);
-    this.libraryError.set(null);
+    this.remote.clear();
     this.accountError.set(null);
-  }
-
-  /** Read the catalogue from the account. */
-  public async refresh(): Promise<void> {
-    if (this.loading()) return;
-    this.loading.set(true);
-    this.libraryError.set(null);
-    try {
-      const catalog = await readRemoteCatalog(await this.account.store());
-      this.remoteBooks.set(catalog.books);
-      this.problems.set(catalog.problems);
-      this.account.markHealthy();
-    } catch (caught) {
-      this.remoteBooks.set([]);
-      this.problems.set([]);
-      this.libraryError.set(caught instanceof Error ? caught.message : String(caught));
-      this.account.markFailed();
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  /** Publish every shelf book that lives on disk, then re-read the catalogue. */
-  public async publish(): Promise<void> {
-    if (this.publisher.publishing()) return;
-    this.accountError.set(null);
-    try {
-      await this.publisher.publish(this.shelf.books(), await this.account.store());
-      await this.refresh();
-    } catch (caught) {
-      this.accountError.set(caught instanceof Error ? caught.message : String(caught));
-    }
-  }
-
-  /** "12 / 180 pages" while a publish runs. */
-  public pageProgress(): string {
-    const progress = this.publisher.progress();
-    return progress === null ? '' : `${progress.done} / ${progress.total} pages`;
-  }
-
-  /** Human size for a pack ("48.2 MB"). */
-  public sizeOf(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    const kb = bytes / 1024;
-    if (kb < 1024) return `${Math.round(kb)} KB`;
-    return `${(kb / 1024).toFixed(1)} MB`;
-  }
-
-  /** Caption under a remote book: size, pages, and the pipeline if any. */
-  public metaFor(book: RemoteBook): string {
-    const pages = `${book.pageCount} page${book.pageCount === 1 ? '' : 's'}`;
-    const scale = book.scale === undefined ? '' : ` · enhanced ${book.scale}×`;
-    return `${pages} · ${this.sizeOf(book.packSize)}${scale}`;
   }
 
   public pairDevice(): void {

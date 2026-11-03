@@ -32,6 +32,21 @@
       <ion-button class="bar-icon" (click)="settingsOpen.set(true)" aria-label="Display and filters">
         <ion-icon slot="icon-only" name="options-outline"></ion-icon>
       </ion-button>
+      @if (signedIn() && publishableCount() > 0) {
+        <ion-button
+          class="bar-icon"
+          [disabled]="publishing()"
+          (click)="publish()"
+          aria-label="Publish books to MEGA"
+          title="Publish {{ publishableCount() }} book(s) to MEGA"
+        >
+          @if (publishing()) {
+            <ion-spinner name="crescent"></ion-spinner>
+          } @else {
+            <ion-icon slot="icon-only" name="cloud-upload-outline"></ion-icon>
+          }
+        </ion-button>
+      }
       <ion-button class="bar-icon" (click)="scan()" [disabled]="scanning()" aria-label="Rescan library">
         <ion-icon slot="icon-only" name="refresh-outline"></ion-icon>
       </ion-button>
@@ -51,10 +66,65 @@
       ></ion-searchbar>
     </ion-toolbar>
   }
+
+  @if (signedIn()) {
+    <ion-toolbar class="source-bar">
+      <ion-segment [value]="source()" (ionChange)="onSource($event)">
+        <ion-segment-button value="device">
+          <ion-label>This device</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="mega">
+          <ion-label>MEGA</ion-label>
+        </ion-segment-button>
+      </ion-segment>
+    </ion-toolbar>
+  }
 </ion-header>
 
 <ion-content>
-  @if (scanning() && children().length === 0) {
+  @if (source() === 'mega') {
+    @if (remoteLoading() && remoteBooks().length === 0) {
+      <div class="status">
+        <ion-spinner name="dots"></ion-spinner>
+        <ion-text>Reading MEGA…</ion-text>
+      </div>
+    } @else if (remoteBooks().length === 0) {
+      <div class="placeholder">
+        <h2>Nothing published yet</h2>
+        <p>
+          @if (publishableCount() > 0) {
+            Use the upload button to publish this device's books.
+          } @else {
+            Books published from any device signed in to this account show up here.
+          }
+        </p>
+        @if (remoteError()) {
+          <p class="remote-error">{{ remoteError() }}</p>
+        }
+      </div>
+    } @else {
+      <div class="grid">
+        @for (book of remoteBooks(); track book.bookId) {
+          <div class="tile" [attr.aria-label]="book.title + ' — ' + remoteMeta(book)">
+            @if (remoteCovers().get(book.bookId); as cover) {
+              <ion-img class="cover" [src]="cover" [alt]="book.title"></ion-img>
+            } @else {
+              <div class="empty-art">
+                <ion-icon name="cloud-outline"></ion-icon>
+              </div>
+            }
+
+            <div class="shade"></div>
+
+            <div class="label">
+              <span class="name">{{ book.title }}</span>
+              <span class="meta">{{ remoteMeta(book) }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  } @else if (scanning() && children().length === 0) {
     <div class="status">
       <ion-spinner name="dots"></ion-spinner>
       <ion-text>Scanning… {{ booksFound() }}</ion-text>
