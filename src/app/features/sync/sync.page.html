@@ -7,122 +7,128 @@
     <ion-title class="sync-title">Sync</ion-title>
 
     <ion-buttons slot="end">
-      <ion-button (click)="pairDevice()" aria-label="Add a device" title="Add a device">
-        <ion-icon slot="icon-only" name="add"></ion-icon>
+      <ion-button (click)="pairDevice()">
+        <ion-icon slot="start" name="add"></ion-icon>
+        Add Device
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content class="sync-content">
-  <ion-list-header>MEGA</ion-list-header>
-
-  @if (signedIn()) {
-    <ion-list lines="inset">
+  <ion-list lines="none">
+    @if (signedIn()) {
       <ion-item>
-        <ion-icon slot="start" name="person-circle-outline"></ion-icon>
-        <ion-label>
-          <h2>{{ accountEmail() }}</h2>
-          <p>Books live in the Emaki folder of this account.</p>
-        </ion-label>
+        <ion-icon slot="start" class="mega-icon" src="assets/icons/mega.svg" aria-hidden="true"></ion-icon>
+        <ion-label>{{ accountEmail() }}</ion-label>
         <ion-button slot="end" fill="clear" color="danger" (click)="signOut()">
           Sign out
         </ion-button>
       </ion-item>
-    </ion-list>
-  } @else {
-    <ion-list lines="inset">
-      <ion-item>
-        <ion-label position="stacked">MEGA email</ion-label>
-        <ion-input
-          [value]="email()"
-          (ionInput)="onEmail($event)"
-          type="email"
-          autocomplete="username"
-          aria-label="MEGA email"
-        ></ion-input>
-      </ion-item>
-      <ion-item>
-        <ion-label position="stacked">Password</ion-label>
-        <ion-input
-          [value]="password()"
-          (ionInput)="onPassword($event)"
-          type="password"
-          autocomplete="current-password"
-          aria-label="MEGA password"
-        ></ion-input>
-      </ion-item>
-      @if (needsCode()) {
-        <ion-item>
-          <ion-label position="stacked">Two-factor code</ion-label>
-          <ion-input
-            [value]="code()"
-            (ionInput)="onCode($event)"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            aria-label="Two-factor code"
-          ></ion-input>
-        </ion-item>
-      }
-    </ion-list>
-
-    @if (accountError()) {
-      <ion-note class="error">{{ accountError() }}</ion-note>
-    }
-
-    <div class="actions">
-      <ion-button [disabled]="signingIn() || !email().trim() || !password()" (click)="signIn()">
-        @if (signingIn()) {
-          <ion-spinner name="crescent"></ion-spinner>
-        } @else {
-          Sign in
-        }
-      </ion-button>
-    </div>
-    <ion-note class="hint">
-      The password is used once; only a revocable session is kept. Every device
-      you sign in can also publish.
-    </ion-note>
-  }
-
-  <ion-list-header>Devices</ion-list-header>
-
-  <ion-list lines="inset">
-    @for (device of devices(); track device.id) {
-      <ion-item>
-        <ion-icon slot="start" name="phone-portrait-outline"></ion-icon>
-        <ion-label>
-          <h2>{{ device.name }}</h2>
-          <p>{{ modeLabels[device.mode] }} · {{ lastSeen(device) }}</p>
-        </ion-label>
-        <ion-button
-          slot="end"
-          fill="clear"
-          [attr.aria-label]="'Send a book to ' + device.name"
-          [title]="'Send a book to ' + device.name"
-          (click)="sendTo(device)"
-        >
-          <ion-icon slot="icon-only" name="book-outline"></ion-icon>
-        </ion-button>
-        <ion-button
-          slot="end"
-          fill="clear"
-          color="danger"
-          [attr.aria-label]="'Forget ' + device.name"
-          (click)="forget(device)"
-        >
-          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
-        </ion-button>
-      </ion-item>
-    } @empty {
-      <ion-item>
-        <ion-label>
-          <h2>No devices yet</h2>
-          <p>Use + to pair your laptop or phone with this one.</p>
-        </ion-label>
+    } @else {
+      <ion-item button detail="false" (click)="openAccount()" aria-label="Sign in to MEGA">
+        <ion-icon slot="start" class="mega-icon" src="assets/icons/mega.svg" aria-hidden="true"></ion-icon>
+        <ion-label>MEGA</ion-label>
+        <ion-icon slot="end" name="chevron-forward" aria-hidden="true"></ion-icon>
       </ion-item>
     }
   </ion-list>
+
+  @if (devices().length > 0) {
+    <ion-list lines="inset">
+      @for (device of devices(); track device.id) {
+        <ion-item>
+          <ion-icon slot="start" name="phone-portrait-outline"></ion-icon>
+          <ion-label>
+            <h2>{{ device.name }}</h2>
+            <p>{{ modeLabels[device.mode] }} · {{ lastSeen(device) }}</p>
+          </ion-label>
+          <ion-button
+            slot="end"
+            fill="clear"
+            [attr.aria-label]="'Send a book to ' + device.name"
+            [title]="'Send a book to ' + device.name"
+            (click)="sendTo(device)"
+          >
+            <ion-icon slot="icon-only" name="book-outline"></ion-icon>
+          </ion-button>
+          <ion-button
+            slot="end"
+            fill="clear"
+            color="danger"
+            [attr.aria-label]="'Forget ' + device.name"
+            (click)="forget(device)"
+          >
+            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+          </ion-button>
+        </ion-item>
+      }
+    </ion-list>
+  }
+
+  <ion-modal
+    class="device-modal"
+    [isOpen]="megaOpen()"
+    (didDismiss)="megaOpen.set(false)"
+  >
+    <ng-template>
+      <div class="modal-body">
+        <ion-list-header>MEGA</ion-list-header>
+
+        <ion-list lines="none">
+          <ion-item>
+            <ion-label position="stacked">Email</ion-label>
+            <ion-input
+              [value]="email()"
+              (ionInput)="onEmail($event)"
+              type="email"
+              autocomplete="username"
+              aria-label="MEGA email"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-label position="stacked">Password</ion-label>
+            <ion-input
+              [value]="password()"
+              (ionInput)="onPassword($event)"
+              type="password"
+              autocomplete="current-password"
+              aria-label="MEGA password"
+            ></ion-input>
+          </ion-item>
+          @if (needsCode()) {
+            <ion-item>
+              <ion-label position="stacked">Two-factor code</ion-label>
+              <ion-input
+                [value]="code()"
+                (ionInput)="onCode($event)"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                aria-label="Two-factor code"
+              ></ion-input>
+            </ion-item>
+          }
+        </ion-list>
+
+        @if (accountError()) {
+          <ion-note class="error">{{ accountError() }}</ion-note>
+        }
+
+        <div class="actions">
+          <ion-button
+            [disabled]="signingIn() || !email().trim() || !password()"
+            (click)="signIn()"
+          >
+            @if (signingIn()) {
+              <ion-spinner name="crescent"></ion-spinner>
+            } @else {
+              Sign in
+            }
+          </ion-button>
+        </div>
+      </div>
+    </ng-template>
+  </ion-modal>
 
   <ion-modal
     class="device-modal"

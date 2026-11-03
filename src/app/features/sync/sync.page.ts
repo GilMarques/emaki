@@ -71,6 +71,8 @@ export class SyncPage {
   /** Pairing and send sheets. */
   public readonly addDeviceOpen = signal(false);
   public readonly sendTarget = signal<PairedDevice | null>(null);
+  /** The MEGA account sheet: sign in, or sign out. */
+  public readonly megaOpen = signal(false);
 
   /** The MEGA account this device is signed in to. */
   public readonly signedIn = this.account.signedIn;
@@ -113,6 +115,7 @@ export class SyncPage {
       this.password.set('');
       this.code.set('');
       this.needsCode.set(false);
+      this.megaOpen.set(false);
       // The shelf is read on the Library page; this just settles the health dot.
       await this.account.probe();
     } catch (caught) {
@@ -131,6 +134,10 @@ export class SyncPage {
     await this.account.signOut();
     this.remote.clear();
     this.accountError.set(null);
+  }
+
+  public openAccount(): void {
+    this.megaOpen.set(true);
   }
 
   public pairDevice(): void {

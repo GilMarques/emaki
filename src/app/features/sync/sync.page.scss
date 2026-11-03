@@ -24,6 +24,23 @@ ion-toolbar.sync-bar {
   --padding-bottom: 24px;
 }
 
+/* MEGA's mark, used wherever the account is named. */
+
+.mega-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+}
+
+/* Account sheet */
+
+.modal-body {
+  display: block;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 0 20px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
 /* Section headers match the Settings page */
 
 ion-list-header {
@@ -62,7 +79,6 @@ ion-list-header {
 }
 
 /* Busy row: spinner on the left, title over detail */
-
 .busy {
   display: flex;
   align-items: center;
