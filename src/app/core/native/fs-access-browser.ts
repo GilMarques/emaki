@@ -49,6 +49,15 @@ const HANDLE_DB = 'emaki-fs-access';
 const HANDLE_STORE = 'handles';
 const HANDLE_KEY = 'library-root';
 
+/**
+ * How long a real dismissal takes, at minimum.
+ *
+ * A picker the user actually saw and closed takes a moment; a dialog that
+ * never opened rejects immediately. The distinction is the only way to tell
+ * "cancelled" from "this window is not allowed to show it".
+ */
+const CANCEL_MS = 250;
+
 function openHandleDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(HANDLE_DB, 1);
@@ -114,12 +123,24 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
   async pickDirectory(): Promise<string | null> {
     const picker = (window as PickerWindow).showDirectoryPicker;
     if (!picker) return null;
+    // A cross-origin frame cannot open the picker at all, and some of them
+    // report that as a dismissal — which would look like nothing happening.
+    if (isEmbedded()) throw pickerFailure(new DOMException('Embedded', 'SecurityError'));
+
+    const started = Date.now();
     let handle: FsDirectoryHandle;
     try {
       handle = await picker.call(window, { mode: 'readwrite' });
     } catch (error) {
-      // Dismissing the picker is not a failure.
-      if (error instanceof DOMException && error.name === 'AbortError') return null;
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        // A dialog a person actually saw takes at least a moment to dismiss.
+        // An instant rejection means it never opened, so say why instead of
+        // leaving the tap with no visible effect.
+        if (Date.now() - started < CANCEL_MS) {
+          throw pickerFailure(new DOMException('Never opened', 'SecurityError'));
+        }
+        return null;
+      }
       throw pickerFailure(error);
     }
     this.rootHandle = handle;
@@ -242,6 +263,23 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
       current = await current.getDirectoryHandle(segment, { create: true });
     }
     return current;
+  }
+}
+
+/**
+ * True inside a cross-origin frame.
+ *
+ * Such a frame is not allowed to open a directory picker, but the refusal is
+ * not reliable to detect after the fact — one webview reports it as the user
+ * dismissing the dialog — so it is checked up front.
+ */
+function isEmbedded(): boolean {
+  try {
+    if (window.self === window.top) return false;
+    // Reading across the boundary throws only when the parent is another origin.
+    return window.top?.document === undefined;
+  } catch {
+    return true;
   }
 }
 
