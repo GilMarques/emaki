@@ -24,6 +24,39 @@ ion-toolbar.sync-bar {
   --padding-bottom: 24px;
 }
 
+.empty-devices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 48px 24px 24px;
+}
+
+.empty-devices-art {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  margin-bottom: 8px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.empty-devices-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--fg, #5c6a72);
+}
+
+.empty-devices-copy {
+  margin: 0 0 12px;
+  max-width: 28ch;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--grey1, #939f91);
+}
+
 /* MEGA's mark, used wherever the account is named. */
 
 .mega-icon {

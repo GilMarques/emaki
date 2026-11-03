@@ -64,6 +64,24 @@
         </ion-item>
       }
     </ion-list>
+  } @else {
+    <div class="empty-devices">
+      <img
+        class="empty-devices-art"
+        src="assets/illustrations/no-devices.png"
+        alt=""
+        width="200"
+        height="200"
+      />
+      <h2 class="empty-devices-title">No devices connected</h2>
+      <p class="empty-devices-copy">
+        Pair a phone to send it the pages you enhance on this computer.
+      </p>
+      <ion-button (click)="pairDevice()">
+        <ion-icon slot="start" name="add"></ion-icon>
+        Add device
+      </ion-button>
+    </div>
   }
 
   <ion-modal
