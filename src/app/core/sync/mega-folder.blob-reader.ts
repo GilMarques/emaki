@@ -1,10 +1,12 @@
-import type {
-  BlobDownloadOptions,
-  BlobEntry,
-  BlobReader,
-  BlobSink,
-} from './blob-store.port';
-import { BlobNotFoundError } from './blob-store.port';
+import type { BlobDownloadOptions, BlobEntry, BlobReader, BlobSink } from './blob-store.port';
+import type { MegaNode } from './mega-node.io';
+import {
+  describeMegaError,
+  downloadNode,
+  joinKey,
+  listNode,
+  nodeAt,
+} from './mega-node.io';
 import type { RemoteLibrary } from './remote-library.service';
 
 /**
@@ -19,24 +21,8 @@ import type { RemoteLibrary } from './remote-library.service';
  * its own crypto — is only loaded once a link is actually used.
  */
 
-/** The subset of megajs' download stream this reader relies on. */
-export interface MegaDownload {
-  on(event: 'data', listener: (chunk: Uint8Array) => void): void;
-  on(event: 'end', listener: () => void): void;
-  on(event: 'error', listener: (error: Error) => void): void;
-  pause(): void;
-  resume(): void;
-  destroy(): void;
-}
-
-/** The subset of a megajs node this reader relies on. */
-export interface MegaNode {
-  readonly name: string;
-  readonly size?: number;
-  readonly directory?: boolean;
-  readonly children?: readonly MegaNode[];
-  download?(): MegaDownload;
-}
+export type { MegaDownload, MegaNode } from './mega-node.io';
+export { describeMegaError, joinKey };
 
 /** Loads the shared folder for a link. Swapped out in tests. */
 export type MegaRootLoader = (url: string) => Promise<MegaNode>;
@@ -62,16 +48,7 @@ export class MegaFolderBlobReader implements BlobReader {
   ) {}
 
   public async list(prefix = ''): Promise<readonly BlobEntry[]> {
-    const node = await this.nodeAt(prefix);
-    const children = node.children;
-    if (children === undefined) {
-      throw new Error(`"${prefix}" is a file, not a folder.`);
-    }
-    return children.map<BlobEntry>((child) => ({
-      key: joinKey(prefix, child.name),
-      size: child.size ?? 0,
-      folder: isFolder(child),
-    }));
+    return listNode(nodeAt(await this.rootNode(), prefix), prefix);
   }
 
   public async open(
@@ -79,85 +56,7 @@ export class MegaFolderBlobReader implements BlobReader {
     sink: BlobSink,
     options: BlobDownloadOptions = {},
   ): Promise<void> {
-    const node = await this.nodeAt(key);
-    const download = node.download;
-    if (download === undefined) {
-      throw new Error(`"${key}" is a folder, not a file.`);
-    }
-    if (options.signal?.aborted === true) throw abortError();
-
-    const stream = download();
-    const total = node.size ?? 0;
-    options.onProgress?.(0, total);
-
-    await new Promise<void>((resolve, reject) => {
-      let received = 0;
-      let settled = false;
-      // Writes are serialised: a disk-backed sink is slower than the network,
-      // and buffering an unread pack in the heap is the thing to avoid.
-      let chain: Promise<void> = Promise.resolve();
-
-      const finish = (error?: Error): void => {
-        if (settled) return;
-        settled = true;
-        options.signal?.removeEventListener('abort', onAbort);
-        if (error === undefined) resolve();
-        else reject(error);
-      };
-
-      const onAbort = (): void => {
-        stream.destroy();
-        finish(abortError());
-      };
-
-      options.signal?.addEventListener('abort', onAbort, { once: true });
-
-      stream.on('data', (chunk) => {
-        if (settled) return;
-        stream.pause();
-        chain = chain
-          .then(async () => {
-            if (settled) return;
-            const bytes = toBytes(chunk);
-            await sink.write(bytes);
-            received += bytes.length;
-            options.onProgress?.(received, total);
-            if (!settled) stream.resume();
-          })
-          .catch((error: unknown) => {
-            stream.destroy();
-            finish(error instanceof Error ? error : new Error(String(error)));
-          });
-      });
-
-      stream.on('error', (error) => {
-        void chain.then(() => finish(describeMegaError(error)));
-      });
-      // Do not report completion before the last write is on disk.
-      stream.on('end', () => {
-        void chain.then(
-          () => finish(),
-          () => finish(),
-        );
-      });
-    });
-  }
-
-  /** Resolve a slash path inside the shared folder. */
-  private async nodeAt(key: string): Promise<MegaNode> {
-    let node = await this.rootNode();
-    for (const segment of key.split('/').filter((part) => part.length > 0)) {
-      const children = node.children;
-      if (children === undefined) {
-        throw new BlobNotFoundError(key);
-      }
-      const next = children.find((child) => child.name === segment);
-      if (next === undefined) {
-        throw new BlobNotFoundError(key);
-      }
-      node = next;
-    }
-    return node;
+    await downloadNode(nodeAt(await this.rootNode(), key), sink, options);
   }
 
   /** Log in to the link once; a failure clears the cache so retry can work. */
@@ -182,48 +81,4 @@ export function blobReaderFor(library: RemoteLibrary): BlobReader {
       throw new Error(`Unsupported store: ${String(unsupported)}`);
     }
   }
-}
-
-/** Path of a child inside its parent. */
-export function joinKey(prefix: string, name: string): string {
-  return prefix === '' ? name : `${prefix}/${name}`;
-}
-
-/**
- * Turn a MEGA client error into something worth showing a person.
- *
- * MEGA reports failures as numeric API codes; the ones a reader can actually
- * hit are quota, throttling and a link that no longer points at the folder.
- */
-export function describeMegaError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/EOVERQUOTA|\(-17\)/.test(message)) {
-    return new Error('MEGA’s transfer quota is exhausted. Try again later.');
-  }
-  if (/EAGAIN|\(-3\)/.test(message)) {
-    return new Error('MEGA is busy or limiting this connection. Try again in a moment.');
-  }
-  if (/ENOENT|\(-9\)/.test(message)) {
-    return new Error('That file is no longer in the shared folder.');
-  }
-  if (/EACCESS|\(-11\)/.test(message)) {
-    return new Error('The shared folder is no longer accessible.');
-  }
-  return error instanceof Error ? error : new Error(message);
-}
-
-function isFolder(node: MegaNode): boolean {
-  return node.directory === true || node.children !== undefined;
-}
-
-function abortError(): Error {
-  const error = new Error('The download was cancelled.');
-  error.name = 'AbortError';
-  return error;
-}
-
-function toBytes(chunk: unknown): Uint8Array {
-  if (chunk instanceof Uint8Array) return chunk;
-  if (chunk instanceof ArrayBuffer) return new Uint8Array(chunk);
-  throw new Error('The store sent a chunk that is not binary data.');
 }

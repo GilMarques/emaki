@@ -112,6 +112,104 @@
     </div>
   }
 
+  <ion-list-header>Publishing</ion-list-header>
+
+  @if (signedIn()) {
+    <ion-list lines="inset">
+      <ion-item>
+        <ion-icon slot="start" name="person-circle-outline"></ion-icon>
+        <ion-label>
+          <h2>{{ accountEmail() }}</h2>
+          <p>Signed in to MEGA — this device can publish.</p>
+        </ion-label>
+        <ion-button slot="end" fill="clear" color="danger" (click)="signOut()">
+          Sign out
+        </ion-button>
+      </ion-item>
+    </ion-list>
+
+    @if (publisher.publishing()) {
+      <div class="publish-state">
+        <ion-spinner name="crescent"></ion-spinner>
+        <div class="publish-text">
+          <span>{{ publisher.progress()?.title ?? 'Publishing…' }}</span>
+          <span class="publish-detail">{{ pageProgress() }}</span>
+        </div>
+      </div>
+    } @else if (publisher.published() > 0) {
+      <ion-note class="hint">
+        Published {{ publisher.published() }}
+        book{{ publisher.published() === 1 ? '' : 's' }} to this account.
+      </ion-note>
+    }
+
+    @if (publisher.error()) {
+      <ion-note class="error">{{ publisher.error() }}</ion-note>
+    }
+
+    <div class="actions">
+      <ion-button
+        [disabled]="publisher.publishing() || publishableCount() === 0"
+        (click)="publish()"
+      >
+        Publish {{ publishableCount() }} book{{ publishableCount() === 1 ? '' : 's' }}
+      </ion-button>
+    </div>
+  } @else {
+    <ion-list lines="inset">
+      <ion-item>
+        <ion-label position="stacked">MEGA email</ion-label>
+        <ion-input
+          [value]="email()"
+          (ionInput)="onEmail($event)"
+          type="email"
+          autocomplete="username"
+          aria-label="MEGA email"
+        ></ion-input>
+      </ion-item>
+      <ion-item>
+        <ion-label position="stacked">Password</ion-label>
+        <ion-input
+          [value]="password()"
+          (ionInput)="onPassword($event)"
+          type="password"
+          autocomplete="current-password"
+          aria-label="MEGA password"
+        ></ion-input>
+      </ion-item>
+      @if (needsCode()) {
+        <ion-item>
+          <ion-label position="stacked">Two-factor code</ion-label>
+          <ion-input
+            [value]="code()"
+            (ionInput)="onCode($event)"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            aria-label="Two-factor code"
+          ></ion-input>
+        </ion-item>
+      }
+    </ion-list>
+
+    @if (accountError()) {
+      <ion-note class="error">{{ accountError() }}</ion-note>
+    }
+
+    <div class="actions">
+      <ion-button [disabled]="signingIn() || !email().trim() || !password()" (click)="signIn()">
+        @if (signingIn()) {
+          <ion-spinner name="crescent"></ion-spinner>
+        } @else {
+          Sign in
+        }
+      </ion-button>
+    </div>
+    <ion-note class="hint">
+      The password is used once. Only a revocable session is kept, and only on
+      this device.
+    </ion-note>
+  }
+
   <ion-list-header>Devices</ion-list-header>
 
   <ion-list lines="inset">

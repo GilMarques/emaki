@@ -130,10 +130,11 @@ owns, rules `request.auth.uid == uid`. No OAuth consent screen, no verification,
 that trap belongs to the Google Drive API, not Firebase.
 
 **Blobs → MEGA.** A folder link is read-only by MEGA's design ("exported folders cannot be written
-to"), which is exactly the reader contract. The computer publishes with MEGAsync/rclone, or with an
-in-app account login if that dependency is unwanted. If the account is on a Pro plan, prefer
-**MEGA S4** (S3-compatible, included with Pro Lite/I/Flexi, €3.50/TB beyond 3 TB, 5× egress) — same
-adapter shape as R2, no unofficial client, no password on any device.
+to"), which is exactly the reader contract. The **computer signs in** (in-app login) and publishes to
+`Emaki/` on the account; readers still use a folder link, so no reader ever holds a credential. If
+the account is on a Pro plan, prefer **MEGA S4** (S3-compatible, included with Pro Lite/I/Flexi,
+€3.50/TB beyond 3 TB, 5× egress) — same adapter shape as R2, no unofficial client, no password on any
+device.
 
 Rejected, with reasons: Google Drive / OneDrive / Dropbox (OAuth app setup for a feature that
 download-first does not need), Supabase free (1 GB storage, **50 MB per file**, pauses after 7 days
@@ -166,10 +167,10 @@ server.
 
 1. **Sync page + storage target** — route, nav entry, `RemoteLibraryService` (link parsing,
    persistence), `DeviceUiService`. *Done.*
-2. **Pack format + manifest** — `index.json` schema, the catalogue that reads it, and the writer that
-   produces it *(done: format, validation, `readRemoteCatalog`, `buildPack`, Sync page listing)*.
-   Remaining: a **write path** (see open questions) and a reader that opens a downloaded pack through
-   the existing page services.
+2. **Pack format + manifest** — `index.json` schema, the catalogue that reads it, the writer that
+   produces it, and publishing it to MEGA *(done: format, validation, `readRemoteCatalog`,
+   `buildPack`, `MegaAccountBlobStore`, sign-in + publish on the Sync page)*. Remaining: a reader
+   that opens a downloaded pack through the existing page services.
 3. **Download engine** — `BlobStore` port, MEGA folder-link implementation, list → choose → fetch
    with progress → local store. The `/sync` page grows a library section.
 4. **Journal** — Dexie tables (`books`, `reading`, `devices`, `journal`, `cursors`), portable ids at
@@ -189,8 +190,10 @@ server.
    paths are a mapping.
 5. **Merge** — per-book LWW on `position` via HLC, `max` on `furthest`, tombstones for deletes.
 6. **No CRDT library.** Per-book LWW + max covers reading position.
-7. **No double encryption.** MEGA's file keys protect blobs; our own group key seals the journal.
-8. **Pairwise secrets for transport**, one group key for the journal at rest.
+7. **Publishing is an in-app MEGA login**, computer only. The password is used once; only a revocable
+   session token is kept. Readers use a folder link and hold no credential.
+8. **No double encryption.** MEGA's file keys protect blobs; our own group key seals the journal.
+9. **Pairwise secrets for transport**, one group key for the journal at rest.
 
 ## Open questions
 
@@ -202,10 +205,6 @@ server.
 - Is the MEGA account on a Pro plan (S4 available) or free (20 GB, folder link only)?
 - Is there an always-on host worth self-hosting the journal on (Appwrite in Docker), instead of
   trusting a cloud free tier not to pause?
-- **How does the computer write packs?** Either a local export folder that MEGAsync/rclone uploads
-  (`<library>/.emaki-sync/`, no credentials, needs one desktop app) or an in-app MEGA login that
-  uploads directly (self-contained, unofficial client, session token on the computer). Both sit
-  behind `BlobStore.put`, so this is an adapter, not a rewrite.
 
 ## Explicitly deferred
 

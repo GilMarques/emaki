@@ -136,6 +136,27 @@ ion-list-header {
   padding: 12px 16px 4px;
 }
 
+/* Publish progress: title over pages, spinner on the left */
+
+.publish-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 0;
+}
+
+.publish-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.86rem;
+}
+
+.publish-detail {
+  font-size: 0.78rem;
+  color: var(--ion-color-medium, #92949c);
+}
+
 /* Plain-language explanation, deliberately not interactive */
 
 .facts {

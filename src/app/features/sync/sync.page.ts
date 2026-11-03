@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
   IonButton,
   IonButtons,
@@ -20,9 +20,12 @@ import { MenuButtonComponent } from '../../shared/menu-button.component';
 import type { BlobReader } from '../../core/sync/blob-store.port';
 import { blobReaderFor } from '../../core/sync/mega-folder.blob-reader';
 import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
+import { MegaAccountService } from '../../core/sync/mega-account.service';
+import { PackPublisherService } from '../../core/sync/pack-publisher.service';
 import { DeviceUiService } from '../../core/sync/device-ui.service';
 import { RemoteLibraryService } from '../../core/sync/remote-library.service';
 import { SyncService } from '../../core/sync/sync.service';
+import { ShelfService } from '../../core/services/shelf.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 
 /** One row in the "how the devices split the work" explanation. */
@@ -68,12 +71,31 @@ export class SyncPage {
   private readonly remote = inject(RemoteLibraryService);
   private readonly sync = inject(SyncService);
   private readonly deviceUi = inject(DeviceUiService);
+  private readonly account = inject(MegaAccountService);
+  private readonly shelf = inject(ShelfService);
+  public readonly publisher = inject(PackPublisherService);
 
   /** The configured remote source, or null when none is set up. */
   public readonly library = this.remote.library;
   /** Devices paired with this one. */
   public readonly devices = this.sync.devices;
   public readonly modeLabels = SYNC_MODE_LABELS;
+
+  /** Publishing device: the MEGA account, if signed in. */
+  public readonly signedIn = this.account.signedIn;
+  public readonly accountEmail = computed(() => this.account.account()?.email ?? null);
+  /** How many shelf books could be published. */
+  public readonly publishableCount = computed(() =>
+    this.publisher.publishable(this.shelf.books()).length,
+  );
+
+  /** Sign-in form state. */
+  public readonly email = signal('');
+  public readonly password = signal('');
+  public readonly code = signal('');
+  public readonly needsCode = signal(false);
+  public readonly signingIn = signal(false);
+  public readonly accountError = signal<string | null>(null);
 
   /** The three-device split this system is built around. */
   public readonly roles: readonly DeviceRole[] = [
@@ -109,6 +131,72 @@ export class SyncPage {
   public onLink(event: CustomEvent): void {
     this.link.set(String(event.detail?.value ?? ''));
     this.error.set(null);
+  }
+
+  public onEmail(event: CustomEvent): void {
+    this.email.set(String(event.detail?.value ?? ''));
+    this.accountError.set(null);
+  }
+
+  public onPassword(event: CustomEvent): void {
+    this.password.set(String(event.detail?.value ?? ''));
+    this.accountError.set(null);
+  }
+
+  public onCode(event: CustomEvent): void {
+    this.code.set(String(event.detail?.value ?? ''));
+    this.accountError.set(null);
+  }
+
+  /** Sign in to MEGA. MEGA may answer with a two-factor challenge first. */
+  public async signIn(): Promise<void> {
+    if (this.signingIn()) return;
+    this.signingIn.set(true);
+    this.accountError.set(null);
+    try {
+      await this.account.signIn(
+        this.email(),
+        this.password(),
+        this.needsCode() ? this.code() : undefined,
+      );
+      this.password.set('');
+      this.code.set('');
+      this.needsCode.set(false);
+    } catch (caught) {
+      if (caught instanceof Error && caught.name === 'TwoFactorRequired') {
+        this.needsCode.set(true);
+        this.accountError.set('Enter the two-factor code from your authenticator app.');
+      } else {
+        this.accountError.set(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      this.signingIn.set(false);
+    }
+  }
+
+  public async signOut(): Promise<void> {
+    await this.account.signOut();
+    this.accountError.set(null);
+  }
+
+  /** Publish every shelf book that lives on disk. */
+  public async publish(): Promise<void> {
+    if (this.publisher.publishing()) return;
+    this.accountError.set(null);
+    try {
+      const store = await this.account.store();
+      await this.publisher.publish(this.shelf.books(), store);
+      // The link may point at the folder that was just written to.
+      await this.check();
+    } catch (caught) {
+      this.accountError.set(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  /** "12 / 180 pages" while a publish runs. */
+  public pageProgress(): string {
+    const progress = this.publisher.progress();
+    return progress === null ? '' : `${progress.done} / ${progress.total} pages`;
   }
 
   /** Validate and store the pasted folder link. */
