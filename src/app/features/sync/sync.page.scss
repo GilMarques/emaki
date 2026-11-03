@@ -24,78 +24,6 @@ ion-toolbar.sync-bar {
   --padding-bottom: 24px;
 }
 
-/* Introduction */
-
-.intro {
-  padding: 4px 16px 14px;
-}
-
-.intro h2 {
-  margin: 0 0 6px;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.intro p {
-  margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.45;
-  color: var(--ion-color-medium, #92949c);
-}
-
-/* The three devices and what each one does */
-
-.roles {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 18px;
-}
-
-.role {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--ion-color-step-50, rgba(128, 128, 128, 0.08));
-}
-
-.role ion-icon {
-  flex: 0 0 auto;
-  font-size: 20px;
-  color: var(--ion-color-medium, #92949c);
-}
-
-.role-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.role-name {
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
-.role-detail {
-  font-size: 0.78rem;
-  color: var(--ion-color-medium, #92949c);
-}
-
-/* Docked layout: three columns fill the width instead of three long rows. */
-@media (min-width: 768px) {
-  .roles {
-    flex-direction: row;
-  }
-
-  .role {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-}
-
 /* Section headers match the Settings page */
 
 ion-list-header {
@@ -155,23 +83,4 @@ ion-list-header {
 .publish-detail {
   font-size: 0.78rem;
   color: var(--ion-color-medium, #92949c);
-}
-
-/* Plain-language explanation, deliberately not interactive */
-
-.facts {
-  margin: 4px 0 0;
-  padding: 0 16px 0 32px;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  color: var(--ion-color-medium, #92949c);
-}
-
-.facts li {
-  margin-bottom: 8px;
-}
-
-.facts strong {
-  color: var(--ion-text-color);
-  font-weight: 600;
 }

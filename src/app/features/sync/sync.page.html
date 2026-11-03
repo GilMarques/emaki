@@ -9,26 +9,6 @@
 </ion-header>
 
 <ion-content class="sync-content">
-  <section class="intro">
-    <h2>One library, three devices</h2>
-    <p>
-      Your computer holds the books. Everything else downloads the packs it
-      needs and keeps them, so reading never waits for a network.
-    </p>
-  </section>
-
-  <div class="roles">
-    @for (role of roles; track role.name) {
-      <div class="role">
-        <ion-icon [name]="role.icon" aria-hidden="true"></ion-icon>
-        <div class="role-text">
-          <span class="role-name">{{ role.name }}</span>
-          <span class="role-detail">{{ role.detail }}</span>
-        </div>
-      </div>
-    }
-  </div>
-
   <ion-list-header>Library storage</ion-list-header>
 
   @if (library(); as lib) {
@@ -246,21 +226,4 @@
       Pair a device
     </ion-button>
   </div>
-
-  <ion-list-header>How it works</ion-list-header>
-
-  <ul class="facts">
-    <li>
-      <strong>One source.</strong> The computer scans the folders and writes each
-      book into your MEGA folder as a pack of pages.
-    </li>
-    <li>
-      <strong>Readers are read-only.</strong> A shared MEGA folder cannot be
-      written to, so a device can never damage the library.
-    </li>
-    <li>
-      <strong>Paste once.</strong> Every device uses the same link; new books
-      appear in it without re-sharing anything.
-    </li>
-  </ul>
 </ion-content>

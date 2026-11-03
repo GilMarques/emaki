@@ -28,13 +28,6 @@ import { SyncService } from '../../core/sync/sync.service';
 import { ShelfService } from '../../core/services/shelf.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 
-/** One row in the "how the devices split the work" explanation. */
-interface DeviceRole {
-  readonly icon: string;
-  readonly name: string;
-  readonly detail: string;
-}
-
 /**
  * Sync setup: where the packs come from, and which devices may read them.
  *
@@ -96,25 +89,6 @@ export class SyncPage {
   public readonly needsCode = signal(false);
   public readonly signingIn = signal(false);
   public readonly accountError = signal<string | null>(null);
-
-  /** The three-device split this system is built around. */
-  public readonly roles: readonly DeviceRole[] = [
-    {
-      icon: 'desktop-outline',
-      name: 'Computer',
-      detail: 'Keeps the books and enhances the pages.',
-    },
-    {
-      icon: 'laptop-outline',
-      name: 'Laptop',
-      detail: 'Downloads the series you read at home.',
-    },
-    {
-      icon: 'phone-portrait-outline',
-      name: 'Phone',
-      detail: 'Takes what you need and reads it offline.',
-    },
-  ];
 
   /** The link being pasted, and why it was rejected. */
   public readonly link = signal('');
