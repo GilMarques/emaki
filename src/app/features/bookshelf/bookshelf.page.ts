@@ -405,17 +405,18 @@ export class BookshelfPage {
 
   /** Pick a folder on disk; it becomes the library root and is scanned. */
   public async openFolder(): Promise<void> {
-    console.log('[shelf] openFolder() start');
-    const dir = await this.fs.pickDirectory();
-    console.log('[shelf] openFolder() picked:', dir);
-    if (!dir) return;
-    this.root.setRoot(dir);
-    console.log('[shelf] openFolder() root set');
-    await this.scanner.discover();
-    console.log('[shelf] openFolder() discovered, tree:', this.scanner.tree());
-    await this.scanner.scan();
-    console.log('[shelf] openFolder() scanned, books:', this.scanner.booksFound());
-    this.preloadCovers();
+    try {
+      const dir = await this.fs.pickDirectory();
+      // Cancelling the picker is a normal outcome, not something to report.
+      if (dir === null) return;
+      this.root.setRoot(dir);
+      await this.scanner.discover();
+      await this.scanner.scan();
+      this.preloadCovers();
+      if (this.signedIn()) await this.remote.refresh();
+    } catch (caught) {
+      this.toastMessage.set(caught instanceof Error ? caught.message : String(caught));
+    }
   }
 
   /** Warm the blob cache for every fs book's cover so tiles render with real

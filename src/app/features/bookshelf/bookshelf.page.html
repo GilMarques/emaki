@@ -77,7 +77,11 @@
   } @else if (currentFolder() === null && !hasRemote()) {
     <div class="placeholder">
       <h2>No library yet</h2>
-      <p>Tap Scan to register the preset books bundled with the app.</p>
+      @if (showFiles()) {
+        <p>Use the folder button above to choose a folder on this computer.</p>
+      } @else {
+        <p>Tap Scan to register the preset books bundled with the app.</p>
+      }
     </div>
   } @else if (visibleChildren().length === 0 && !hasRemote()) {
     <div class="placeholder">

@@ -114,7 +114,14 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
   async pickDirectory(): Promise<string | null> {
     const picker = (window as PickerWindow).showDirectoryPicker;
     if (!picker) return null;
-    const handle = await picker.call(window, { mode: 'readwrite' });
+    let handle: FsDirectoryHandle;
+    try {
+      handle = await picker.call(window, { mode: 'readwrite' });
+    } catch (error) {
+      // Dismissing the picker is not a failure.
+      if (error instanceof DOMException && error.name === 'AbortError') return null;
+      throw pickerFailure(error);
+    }
     this.rootHandle = handle;
     await idbSet(HANDLE_KEY, handle);
     return `/${handle.name}`;
@@ -236,4 +243,20 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
     }
     return current;
   }
+}
+
+/**
+ * Turn a picker rejection into something worth showing.
+ *
+ * Chrome refuses `showDirectoryPicker` in a cross-origin frame and in some
+ * embedded webviews; the browser's own message says nothing useful about why,
+ * so the fix is spelled out: the app is fine, the window is not.
+ */
+function pickerFailure(error: unknown): Error {
+  if (error instanceof DOMException && error.name === 'SecurityError') {
+    return new Error(
+      'This window is not allowed to open a folder picker. Open Emaki in a Chrome or Edge tab to choose a library folder.',
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
