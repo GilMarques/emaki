@@ -27,6 +27,7 @@ import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { MenuStateService } from './core/services/menu-state.service';
 import { SyncService } from './core/sync/sync.service';
+import { MegaAccountService } from './core/sync/mega-account.service';
 import { ViewerPage } from './features/viewer/viewer.page';
 
 @Component({
@@ -62,6 +63,7 @@ export class AppComponent {
   private readonly bookstore = inject(BookstoreService);
   private readonly tasks = inject(TaskManagerService);
   private readonly sync = inject(SyncService);
+  private readonly account = inject(MegaAccountService);
   private readonly menuController = inject(MenuController);
 
   /** Docked sidebar state (shared with every page's menu button). */
@@ -69,6 +71,23 @@ export class AppComponent {
 
   /** Devices this computer may hand books to (shown as a count on Sync). */
   public readonly devices = this.sync.devices;
+
+  /** Health of the MEGA connection, shown as the dot beside Sync. */
+  public readonly syncHealth = this.account.health;
+
+  /** Tooltip for the Sync shortcut: what the dot is actually saying. */
+  public readonly syncTitle = computed(() => {
+    switch (this.syncHealth()) {
+      case 'ok':
+        return 'Sync — MEGA is reachable';
+      case 'error':
+        return 'Sync — MEGA did not answer';
+      case 'unknown':
+        return 'Sync — not checked yet';
+      default:
+        return 'Sync — not signed in';
+    }
+  });
 
   /** Background jobs in the side menu — downloads and enhancements mixed,
    *  newest first, at most five. */
@@ -134,6 +153,9 @@ export class AppComponent {
     // Start the debug log (session marker + file sink) at launch rather than
     // when the log viewer is first opened.
     inject(LogService);
+
+    // Keep the sidebar's health dot meaningful before Sync is ever opened.
+    if (this.account.signedIn()) void this.account.probe();
 
     // Apply theme at the document level so every page inherits it.
     effect(() => {

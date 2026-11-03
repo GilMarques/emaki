@@ -83,10 +83,29 @@ ion-menu ion-footer {
   color: var(--ion-color-primary, #35a77c);
 }
 
-.menu-bottom-sync ion-icon {
+/* Health dot: green reachable, red refused, grey unknown or signed out. */
+.menu-bottom-sync .health {
   flex: 0 0 auto;
-  font-size: 18px;
-  opacity: 0.8;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ion-color-medium, #92949c);
+  opacity: 0.45;
+}
+
+.menu-bottom-sync .health.unknown {
+  background: var(--ion-color-medium, #92949c);
+  opacity: 0.45;
+}
+
+.menu-bottom-sync .health.ok {
+  background: var(--ion-color-success, #2dd36f);
+  opacity: 1;
+}
+
+.menu-bottom-sync .health.error {
+  background: var(--ion-color-danger, #eb445a);
+  opacity: 1;
 }
 
 .menu-bottom-sync .label {

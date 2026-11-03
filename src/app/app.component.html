@@ -98,16 +98,23 @@
             <ion-icon aria-hidden="true" name="settings"></ion-icon>
           </a>
 
-          <!-- Devices live on the Sync page; this is its shortcut. -->
+          <!-- Devices live on the Sync page; this is its shortcut, and the
+               dot is the health of the MEGA connection. -->
           <a
             class="menu-bottom-sync"
             routerLink="/sync"
             routerLinkActive="selected"
-            aria-label="Sync"
-            title="Sync"
+            [attr.aria-label]="syncTitle()"
+            [attr.title]="syncTitle()"
             (click)="closeDrawer()"
           >
-            <ion-icon aria-hidden="true" name="sync-outline"></ion-icon>
+            <span
+              class="health"
+              aria-hidden="true"
+              [class.ok]="syncHealth() === 'ok'"
+              [class.error]="syncHealth() === 'error'"
+              [class.unknown]="syncHealth() === 'unknown'"
+            ></span>
             <span class="label">Sync</span>
             @if (devices().length > 0) {
               <span class="count">{{ devices().length }}</span>

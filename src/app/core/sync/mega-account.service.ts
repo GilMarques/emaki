@@ -18,6 +18,14 @@ import { describeMegaError, isTwoFactorError } from './mega-node.io';
 
 const STORAGE_KEY = 'emaki:mega-account:v1';
 
+/**
+ * Health of the account connection, as the sidebar dot shows it.
+ *
+ * `unknown` is honest rather than vague: signed in, but nothing has been
+ * asked of MEGA yet this session.
+ */
+export type MegaHealth = 'signed-out' | 'unknown' | 'ok' | 'error';
+
 /** What survives a reload: who, and a revocable session. */
 export interface MegaAccount {
   readonly email: string;
@@ -36,6 +44,12 @@ export class MegaAccountService {
   /** The saved account, or null when this device is signed out. */
   public readonly account = this._account.asReadonly();
   public readonly signedIn = computed(() => this._account() !== null);
+
+  private readonly _health = signal<MegaHealth>(
+    this._account() === null ? 'signed-out' : 'unknown',
+  );
+  /** Connection health for the sidebar dot. */
+  public readonly health = this._health.asReadonly();
 
   /** Live client, kept so a second call does not re-login. */
   private live: MegaStorage | null = null;
@@ -83,11 +97,41 @@ export class MegaAccountService {
     return new MegaAccountBlobStore(await this.storage());
   }
 
+  /**
+   * One cheap round trip to see whether the account answers.
+   *
+   * Just lists the library folder — one request, no manifests — so the shell
+   * can keep the health dot honest on launch without pulling the catalogue.
+   */
+  public async probe(): Promise<void> {
+    if (!this.signedIn()) {
+      this._health.set('signed-out');
+      return;
+    }
+    try {
+      await (await this.store()).list();
+      this.markHealthy();
+    } catch {
+      this.markFailed();
+    }
+  }
+
+  /** Record that MEGA answered. */
+  public markHealthy(): void {
+    this._health.set(this.signedIn() ? 'ok' : 'signed-out');
+  }
+
+  /** Record that MEGA refused or could not be reached. */
+  public markFailed(): void {
+    this._health.set(this.signedIn() ? 'error' : 'signed-out');
+  }
+
   public async signOut(): Promise<void> {
     const live = this.live;
     this.live = null;
     this.loading = null;
     this._account.set(null);
+    this._health.set('signed-out');
     persist(null);
     try {
       await live?.close?.();
@@ -130,6 +174,8 @@ export class MegaAccountService {
     this.live = storage;
     this.loading = null;
     this._account.set(account);
+    // A fresh session has not been asked anything yet.
+    this._health.set('unknown');
     persist(account);
   }
 }

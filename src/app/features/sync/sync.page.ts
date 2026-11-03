@@ -163,10 +163,12 @@ export class SyncPage {
       const catalog = await readRemoteCatalog(await this.account.store());
       this.remoteBooks.set(catalog.books);
       this.problems.set(catalog.problems);
+      this.account.markHealthy();
     } catch (caught) {
       this.remoteBooks.set([]);
       this.problems.set([]);
       this.libraryError.set(caught instanceof Error ? caught.message : String(caught));
+      this.account.markFailed();
     } finally {
       this.loading.set(false);
     }
