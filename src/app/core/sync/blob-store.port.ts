@@ -34,7 +34,7 @@ export interface BlobSink {
  */
 export class BlobNotFoundError extends Error {
   constructor(key: string) {
-    super(`The shared folder has no "${key}".`);
+    super(`"${key}" is not in the library.`);
     this.name = 'BlobNotFoundError';
   }
 }
@@ -62,38 +62,8 @@ export interface BlobStore extends BlobReader {
   remove(key: string): Promise<void>;
 }
 
-/** How deep `listFiles` will descend when flattening a store. */
-const MAX_DEPTH = 4;
-
 /** Default ceiling for `readBlob` — a manifest, not a pack. */
 const READ_LIMIT_BYTES = 8 * 1024 * 1024;
-
-/**
- * Every file under `prefix`, folders flattened away.
- *
- * A pack layout is two levels (`bk-<hash>/pages.pack`), but the walk is
- * bounded rather than trusting the remote's shape: a surprise folder heap
- * should fail, not spin.
- */
-export async function listFiles(
-  reader: BlobReader,
-  prefix = '',
-  depth = 0,
-): Promise<readonly BlobEntry[]> {
-  if (depth > MAX_DEPTH) {
-    throw new Error(`The store nests deeper than ${MAX_DEPTH} folders under "${prefix}".`);
-  }
-  const entries = await reader.list(prefix);
-  const out: BlobEntry[] = [];
-  for (const entry of entries) {
-    if (!entry.folder) {
-      out.push(entry);
-      continue;
-    }
-    out.push(...(await listFiles(reader, entry.key, depth + 1)));
-  }
-  return out;
-}
 
 /**
  * Read one small object into memory.

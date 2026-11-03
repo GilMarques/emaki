@@ -9,42 +9,72 @@
 </ion-header>
 
 <ion-content class="sync-content">
-  <ion-list-header>Library storage</ion-list-header>
+  <ion-list-header>MEGA</ion-list-header>
 
-  @if (library(); as lib) {
+  @if (signedIn()) {
     <ion-list lines="inset">
       <ion-item>
-        <ion-icon slot="start" class="state-icon ok" name="cloud-done-outline"></ion-icon>
+        <ion-icon slot="start" name="person-circle-outline"></ion-icon>
         <ion-label>
-          <h2>MEGA folder connected</h2>
-          <p>{{ lib.handle }}</p>
+          <h2>{{ accountEmail() }}</h2>
+          <p>Books live in the Emaki folder of this account.</p>
         </ion-label>
-        <ion-button slot="end" fill="clear" color="danger" (click)="disconnect()">
-          Remove
+        <ion-button slot="end" fill="clear" color="danger" (click)="signOut()">
+          Sign out
         </ion-button>
       </ion-item>
-      <ion-item>
-        @if (checking()) {
-          <ion-spinner slot="start" name="crescent"></ion-spinner>
-          <ion-label>
-            <h2>Checking the folder…</h2>
-          </ion-label>
-        } @else {
-          <ion-icon slot="start" name="refresh-outline"></ion-icon>
-          <ion-label>
-            <h2>Folder contents</h2>
-            <p>{{ checkResult() ?? 'Not checked yet' }}</p>
-          </ion-label>
-          <ion-button slot="end" fill="outline" (click)="check()">Check</ion-button>
-        }
-      </ion-item>
     </ion-list>
-    <ion-note class="hint">
-      Packs downloaded from this link stay on this device and open offline.
-    </ion-note>
 
-    @if (remoteBooks().length > 0) {
-      <ion-list-header>Library</ion-list-header>
+    @if (publisher.publishing()) {
+      <div class="busy">
+        <ion-spinner name="crescent"></ion-spinner>
+        <div class="busy-text">
+          <span>{{ publisher.progress()?.title ?? 'Publishing…' }}</span>
+          <span class="busy-detail">{{ pageProgress() }}</span>
+        </div>
+      </div>
+    } @else if (publisher.published() > 0) {
+      <ion-note class="hint">
+        Published {{ publisher.published() }}
+        book{{ publisher.published() === 1 ? '' : 's' }} to this account.
+      </ion-note>
+    }
+
+    @if (publisher.error()) {
+      <ion-note class="error">{{ publisher.error() }}</ion-note>
+    }
+    @if (libraryError()) {
+      <ion-note class="error">{{ libraryError() }}</ion-note>
+    }
+
+    <div class="actions">
+      <ion-button
+        fill="outline"
+        [disabled]="loading() || publisher.publishing()"
+        (click)="refresh()"
+      >
+        Refresh
+      </ion-button>
+      <ion-button
+        [disabled]="loading() || publisher.publishing() || publishableCount() === 0"
+        (click)="publish()"
+      >
+        Publish {{ publishableCount() }} book{{ publishableCount() === 1 ? '' : 's' }}
+      </ion-button>
+    </div>
+
+    <ion-list-header>Library</ion-list-header>
+
+    @if (loading() && remoteBooks().length === 0) {
+      <div class="busy">
+        <ion-spinner name="crescent"></ion-spinner>
+        <div class="busy-text">
+          <span>Reading the library…</span>
+        </div>
+      </div>
+    } @else if (remoteBooks().length === 0) {
+      <ion-note class="hint">Nothing published yet.</ion-note>
+    } @else {
       <ion-list lines="inset">
         @for (book of remoteBooks(); track book.bookId) {
           <ion-item>
@@ -65,76 +95,6 @@
         }
       </ion-note>
     }
-  } @else {
-    <ion-list lines="inset">
-      <ion-item>
-        <ion-label position="stacked">Folder link</ion-label>
-        <ion-input
-          [value]="link()"
-          (ionInput)="onLink($event)"
-          placeholder="https://mega.nz/folder/…#…"
-          aria-label="MEGA folder link"
-          autocapitalize="off"
-          autocomplete="off"
-          spellcheck="false"
-        ></ion-input>
-      </ion-item>
-    </ion-list>
-
-    <ion-note class="hint">In MEGA, right-click the folder → Share → Copy link.</ion-note>
-
-    @if (error()) {
-      <ion-note class="error">{{ error() }}</ion-note>
-    }
-
-    <div class="actions">
-      <ion-button [disabled]="!link().trim()" (click)="connect()">Connect storage</ion-button>
-    </div>
-  }
-
-  <ion-list-header>Publishing</ion-list-header>
-
-  @if (signedIn()) {
-    <ion-list lines="inset">
-      <ion-item>
-        <ion-icon slot="start" name="person-circle-outline"></ion-icon>
-        <ion-label>
-          <h2>{{ accountEmail() }}</h2>
-          <p>Signed in to MEGA — this device can publish.</p>
-        </ion-label>
-        <ion-button slot="end" fill="clear" color="danger" (click)="signOut()">
-          Sign out
-        </ion-button>
-      </ion-item>
-    </ion-list>
-
-    @if (publisher.publishing()) {
-      <div class="publish-state">
-        <ion-spinner name="crescent"></ion-spinner>
-        <div class="publish-text">
-          <span>{{ publisher.progress()?.title ?? 'Publishing…' }}</span>
-          <span class="publish-detail">{{ pageProgress() }}</span>
-        </div>
-      </div>
-    } @else if (publisher.published() > 0) {
-      <ion-note class="hint">
-        Published {{ publisher.published() }}
-        book{{ publisher.published() === 1 ? '' : 's' }} to this account.
-      </ion-note>
-    }
-
-    @if (publisher.error()) {
-      <ion-note class="error">{{ publisher.error() }}</ion-note>
-    }
-
-    <div class="actions">
-      <ion-button
-        [disabled]="publisher.publishing() || publishableCount() === 0"
-        (click)="publish()"
-      >
-        Publish {{ publishableCount() }} book{{ publishableCount() === 1 ? '' : 's' }}
-      </ion-button>
-    </div>
   } @else {
     <ion-list lines="inset">
       <ion-item>
@@ -185,8 +145,8 @@
       </ion-button>
     </div>
     <ion-note class="hint">
-      The password is used once. Only a revocable session is kept, and only on
-      this device.
+      The password is used once; only a revocable session is kept. Every device
+      you sign in can also publish.
     </ion-note>
   }
 

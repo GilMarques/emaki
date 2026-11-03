@@ -32,8 +32,8 @@ one book* from a computer to a phone over the LAN, and stop there.
   receives pages it cannot open.
 - **Reading state is device-local.** `HistoryService` is a 100-entry localStorage list;
   `ShelfService` progress is not persisted at all.
-- **Done:** the `/sync` page (`features/sync/`) and `RemoteLibraryService`, which validates and
-  stores a MEGA folder link. It holds a *target*, not a transport, so backends can be swapped.
+- **Done:** the `/sync` page (`features/sync/`), MEGA sign-in with a revocable session, the pack
+  format, publishing to `Emaki/`, and the catalogue that reads it back.
 
 ## Architecture
 
@@ -113,7 +113,7 @@ JournalTransport exchange lines after a cursor
 
 - **LAN** (exists today) for bulk when both devices are home.
 - **Firestore** for the journal — reachable from a train, no port forwarding.
-- **MEGA folder link** for blobs on readers.
+- **MEGA account** for blobs: every device signs in and reads `Emaki/`.
 
 ### Roles as capabilities
 
@@ -129,10 +129,14 @@ sealed with a group key so Google only ever sees ciphertext. Auth: one Firebase 
 owns, rules `request.auth.uid == uid`. No OAuth consent screen, no verification, no publishing step —
 that trap belongs to the Google Drive API, not Firebase.
 
-**Blobs → MEGA.** A folder link is read-only by MEGA's design ("exported folders cannot be written
-to"), which is exactly the reader contract. The **computer signs in** (in-app login) and publishes to
-`Emaki/` on the account; readers still use a folder link, so no reader ever holds a credential. If
-the account is on a Pro plan, prefer **MEGA S4** (S3-compatible, included with Pro Lite/I/Flexi,
+**Blobs → MEGA, one account on every device.** Every device signs in to the same account and reads
+and writes the same `Emaki/` folder. This is a deliberate standardisation: one code path, one place a
+book can come from, no link to paste or re-export. The cost is explicit — a device that can read the
+library can also publish to it, so the credential is write-capable everywhere. What is *not* shared is
+the password: only a session token from `storage.toJSON()` is kept, and MEGA can revoke it per device
+from the account's Security page.
+
+If the account is on a Pro plan, prefer **MEGA S4** (S3-compatible, included with Pro Lite/I/Flexi,
 €3.50/TB beyond 3 TB, 5× egress) — same adapter shape as R2, no unofficial client, no password on any
 device.
 
@@ -159,20 +163,20 @@ server.
 
 ## UI
 
-- `/sync` (done): introduction, the three roles, the storage link, paired devices.
-- Next on that page: **library** — what the link offers vs what is on this device, with a download
-  action per book; queue progress already has a home in the sidebar's Tasks section.
+- `/sync` (done): MEGA sign-in, the account's `Emaki/` library, publish, paired devices.
+- Next on that page: a download action per book, and what is on this device versus what is only in
+  the account. Queue progress already has a home in the sidebar's Tasks section.
 
 ## Phased steps
 
-1. **Sync page + storage target** — route, nav entry, `RemoteLibraryService` (link parsing,
-   persistence), `DeviceUiService`. *Done.*
+1. **Sync page** — route, nav entry, `DeviceUiService`, then MEGA sign-in with a revocable session.
+   *Done.*
 2. **Pack format + manifest** — `index.json` schema, the catalogue that reads it, the writer that
    produces it, and publishing it to MEGA *(done: format, validation, `readRemoteCatalog`,
    `buildPack`, `MegaAccountBlobStore`, sign-in + publish on the Sync page)*. Remaining: a reader
    that opens a downloaded pack through the existing page services.
-3. **Download engine** — `BlobStore` port, MEGA folder-link implementation, list → choose → fetch
-   with progress → local store. The `/sync` page grows a library section.
+3. **Download engine** — list → choose → fetch with progress → local store, on top of
+   `BlobStore`. The `/sync` page grows a download action and an on-device marker.
 4. **Journal** — Dexie tables (`books`, `reading`, `devices`, `journal`, `cursors`), portable ids at
    scan time, HLC merge, journal over Firestore.
 5. **Three-device pass** — computer writes, laptop and phone read; resume prompt; verify the whole
@@ -184,14 +188,13 @@ server.
 1. **Offline-first.** Books are downloaded in full, then read. Range support and streaming latency are
    not criteria for the blob backend.
 2. **Journal on Firestore; blobs on MEGA.** Two providers, each doing what it is good at.
-3. **Read-only readers.** Only the computer holds a write credential. A reader never has anything to
-   corrupt.
+3. **Every device signs in to MEGA.** One account, one `Emaki/` folder, no folder links. A device
+   that can read the library can also publish to it — accepted for the sake of one code path.
 4. **Identity** — `bk:<hash>` for local scans, `dl:<provider>:<chapter>` for provider chapters; local
    paths are a mapping.
 5. **Merge** — per-book LWW on `position` via HLC, `max` on `furthest`, tombstones for deletes.
 6. **No CRDT library.** Per-book LWW + max covers reading position.
-7. **Publishing is an in-app MEGA login**, computer only. The password is used once; only a revocable
-   session token is kept. Readers use a folder link and hold no credential.
+7. **Only a session token is stored**, never the password, and MEGA can revoke it per device.
 8. **No double encryption.** MEGA's file keys protect blobs; our own group key seals the journal.
 9. **Pairwise secrets for transport**, one group key for the journal at rest.
 
@@ -200,9 +203,7 @@ server.
 - Should a pack be deleted automatically once a book is finished, or only on request? (Needs a policy
   before the download engine ships.)
 - Does the laptop keep its own copy of the source files, or read from the computer over the LAN?
-- Phone credential: folder link, a viewer MEGA account with a read-only share, or a prefix-scoped S4
-  key? Code is identical; this is a config choice inside `BlobStore`.
-- Is the MEGA account on a Pro plan (S4 available) or free (20 GB, folder link only)?
+- Is the MEGA account on a Pro plan (S4 available) or free (20 GB)?
 - Is there an always-on host worth self-hosting the journal on (Appwrite in Docker), instead of
   trusting a cloud free tier not to pause?
 

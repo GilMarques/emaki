@@ -36,10 +36,6 @@ ion-list-header {
   color: var(--ion-color-medium, #92949c);
 }
 
-.state-icon.ok {
-  color: var(--ion-color-success, #2dd36f);
-}
-
 .hint {
   display: block;
   padding: 8px 16px 0;
@@ -61,26 +57,27 @@ ion-list-header {
 .actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   padding: 12px 16px 4px;
 }
 
-/* Publish progress: title over pages, spinner on the left */
+/* Busy row: spinner on the left, title over detail */
 
-.publish-state {
+.busy {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 16px 0;
 }
 
-.publish-text {
+.busy-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
   font-size: 0.86rem;
 }
 
-.publish-detail {
+.busy-detail {
   font-size: 0.78rem;
   color: var(--ion-color-medium, #92949c);
 }

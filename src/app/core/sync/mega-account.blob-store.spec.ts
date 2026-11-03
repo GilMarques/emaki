@@ -108,10 +108,18 @@ describe('MegaAccountBlobStore', () => {
     expect(book.children).toEqual([]);
   });
 
-  it('reports a missing key as not found', async () => {
+  it('lists nothing when the account has never published', async () => {
     const store = storeFor(new FakeNode('', true));
 
-    await expectAsync(store.list('nope')).toBeRejectedWithError(BlobNotFoundError);
+    expect(await store.list()).toEqual([]);
+  });
+
+  it('reports a missing file as not found', async () => {
+    const store = storeFor(new FakeNode('', true));
+
+    await expectAsync(
+      store.open('bk-a/pages.pack', { write: () => Promise.resolve() }),
+    ).toBeRejectedWithError(BlobNotFoundError);
   });
 
   it('says so when the session cannot create folders', async () => {

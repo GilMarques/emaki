@@ -17,24 +17,21 @@ import {
 } from '@ionic/angular/standalone';
 
 import { MenuButtonComponent } from '../../shared/menu-button.component';
-import type { BlobReader } from '../../core/sync/blob-store.port';
-import { blobReaderFor } from '../../core/sync/mega-folder.blob-reader';
-import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
 import { MegaAccountService } from '../../core/sync/mega-account.service';
 import { PackPublisherService } from '../../core/sync/pack-publisher.service';
+import { readRemoteCatalog, type RemoteBook } from '../../core/sync/pack-catalog';
 import { DeviceUiService } from '../../core/sync/device-ui.service';
-import { RemoteLibraryService } from '../../core/sync/remote-library.service';
 import { SyncService } from '../../core/sync/sync.service';
 import { ShelfService } from '../../core/services/shelf.service';
 import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 
 /**
- * Sync setup: where the packs come from, and which devices may read them.
+ * Sync: the MEGA account that holds the library, and the devices that read it.
  *
- * The page is the introduction to the system, not a dashboard of things that
- * do not exist yet — every row here is backed by real state. Library storage
- * is a validated MEGA folder link (read-only, so a reader cannot damage the
- * library) and devices come from the same registry the sidebar uses.
+ * Every device signs in to the same account and looks at the same `Emaki`
+ * folder, so there is one code path and one place a book can come from. The
+ * trade is explicit: a device that can read the library can also publish to
+ * it, so this is not a read-only credential.
  */
 @Component({
   selector: 'ov-sync',
@@ -61,20 +58,17 @@ import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.mod
   styleUrls: ['./sync.page.scss'],
 })
 export class SyncPage {
-  private readonly remote = inject(RemoteLibraryService);
   private readonly sync = inject(SyncService);
   private readonly deviceUi = inject(DeviceUiService);
   private readonly account = inject(MegaAccountService);
   private readonly shelf = inject(ShelfService);
   public readonly publisher = inject(PackPublisherService);
 
-  /** The configured remote source, or null when none is set up. */
-  public readonly library = this.remote.library;
-  /** Devices paired with this one. */
+  /** Devices paired with this one, for handing books over the LAN. */
   public readonly devices = this.sync.devices;
   public readonly modeLabels = SYNC_MODE_LABELS;
 
-  /** Publishing device: the MEGA account, if signed in. */
+  /** The MEGA account this device is signed in to. */
   public readonly signedIn = this.account.signedIn;
   public readonly accountEmail = computed(() => this.account.account()?.email ?? null);
   /** How many shelf books could be published. */
@@ -90,21 +84,16 @@ export class SyncPage {
   public readonly signingIn = signal(false);
   public readonly accountError = signal<string | null>(null);
 
-  /** The link being pasted, and why it was rejected. */
-  public readonly link = signal('');
-  public readonly error = signal<string | null>(null);
-
-  /** Result of the last folder check, and whether one is running. */
-  public readonly checking = signal(false);
-  public readonly checkResult = signal<string | null>(null);
-  /** Books the folder offers, and folders whose manifest we cannot trust. */
+  /** What the account holds, and whether a read is in flight. */
   public readonly remoteBooks = signal<readonly RemoteBook[]>([]);
   public readonly problems = signal<readonly string[]>([]);
-  private reader: BlobReader | null = null;
+  public readonly loading = signal(false);
+  public readonly libraryError = signal<string | null>(null);
 
-  public onLink(event: CustomEvent): void {
-    this.link.set(String(event.detail?.value ?? ''));
-    this.error.set(null);
+  constructor() {
+    // A restored session is enough to show the library; a revoked one surfaces
+    // as an error with the sign-in form right above it.
+    if (this.signedIn()) void this.refresh();
   }
 
   public onEmail(event: CustomEvent): void {
@@ -136,6 +125,7 @@ export class SyncPage {
       this.password.set('');
       this.code.set('');
       this.needsCode.set(false);
+      await this.refresh();
     } catch (caught) {
       if (caught instanceof Error && caught.name === 'TwoFactorRequired') {
         this.needsCode.set(true);
@@ -150,18 +140,37 @@ export class SyncPage {
 
   public async signOut(): Promise<void> {
     await this.account.signOut();
+    this.remoteBooks.set([]);
+    this.problems.set([]);
+    this.libraryError.set(null);
     this.accountError.set(null);
   }
 
-  /** Publish every shelf book that lives on disk. */
+  /** Read the catalogue from the account. */
+  public async refresh(): Promise<void> {
+    if (this.loading()) return;
+    this.loading.set(true);
+    this.libraryError.set(null);
+    try {
+      const catalog = await readRemoteCatalog(await this.account.store());
+      this.remoteBooks.set(catalog.books);
+      this.problems.set(catalog.problems);
+    } catch (caught) {
+      this.remoteBooks.set([]);
+      this.problems.set([]);
+      this.libraryError.set(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /** Publish every shelf book that lives on disk, then re-read the catalogue. */
   public async publish(): Promise<void> {
     if (this.publisher.publishing()) return;
     this.accountError.set(null);
     try {
-      const store = await this.account.store();
-      await this.publisher.publish(this.shelf.books(), store);
-      // The link may point at the folder that was just written to.
-      await this.check();
+      await this.publisher.publish(this.shelf.books(), await this.account.store());
+      await this.refresh();
     } catch (caught) {
       this.accountError.set(caught instanceof Error ? caught.message : String(caught));
     }
@@ -171,55 +180,6 @@ export class SyncPage {
   public pageProgress(): string {
     const progress = this.publisher.progress();
     return progress === null ? '' : `${progress.done} / ${progress.total} pages`;
-  }
-
-  /** Validate and store the pasted folder link. */
-  public connect(): void {
-    const result = this.remote.connect(this.link());
-    if (!result.ok) {
-      this.error.set(result.reason);
-      return;
-    }
-    this.reader = null;
-    this.link.set('');
-    this.error.set(null);
-    void this.check();
-  }
-
-  public disconnect(): void {
-    this.reader = null;
-    this.checkResult.set(null);
-    this.remoteBooks.set([]);
-    this.problems.set([]);
-    this.remote.forget();
-  }
-
-  /**
-   * Ask the store what is actually in the shared folder.
-   *
-   * Parsing the link only proves it is shaped like a link. This reads the
-   * folder, so the page can say what is there — the difference between
-   * "connected" and "connected to something".
-   */
-  public async check(): Promise<void> {
-    const library = this.library();
-    if (library === null || this.checking()) return;
-    this.checking.set(true);
-    this.checkResult.set(null);
-    try {
-      this.reader ??= blobReaderFor(library);
-      const catalog = await readRemoteCatalog(this.reader);
-      this.remoteBooks.set(catalog.books);
-      this.problems.set(catalog.problems);
-      this.checkResult.set(describeCatalog(catalog.books.length, library.handle));
-    } catch (caught) {
-      this.reader = null;
-      this.remoteBooks.set([]);
-      this.problems.set([]);
-      this.checkResult.set(describeFailure(caught));
-    } finally {
-      this.checking.set(false);
-    }
   }
 
   /** Human size for a pack ("48.2 MB"). */
@@ -254,19 +214,4 @@ export class SyncPage {
     if (diff < 86_400_000) return `Seen ${Math.floor(diff / 3_600_000)}h ago`;
     return `Seen ${Math.floor(diff / 86_400_000)}d ago`;
   }
-}
-
-/** One line describing what the folder holds. */
-function describeCatalog(count: number, handle: string): string {
-  if (count === 0) return 'No books published in this folder yet.';
-  return `${count} book${count === 1 ? '' : 's'} available in ${handle}.`;
-}
-
-/** Turn a load or network failure into something a person can act on. */
-function describeFailure(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/Loading chunk|dynamically imported module/i.test(message)) {
-    return 'The MEGA client failed to load. Check the connection, then reload the app.';
-  }
-  return message;
 }

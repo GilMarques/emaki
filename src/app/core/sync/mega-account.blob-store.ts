@@ -1,7 +1,7 @@
 import type { BlobDownloadOptions, BlobEntry, BlobSink, BlobStore } from './blob-store.port';
 import { BlobNotFoundError } from './blob-store.port';
 import type { MegaNode } from './mega-node.io';
-import { downloadNode, isFolder, joinKey, listNode, nodeAt } from './mega-node.io';
+import { downloadNode, isFolder, listNode } from './mega-node.io';
 
 /**
  * The signed-in account as a writable `BlobStore`.
@@ -46,7 +46,10 @@ export class MegaAccountBlobStore implements BlobStore {
   ) {}
 
   public async list(prefix = ''): Promise<readonly BlobEntry[]> {
-    return listNode(await this.folderAt(prefix, false), prefix);
+    // An account that has never published has no library folder at all; that
+    // is an empty library, not a failure.
+    const folder = await this.folderAt(prefix, false);
+    return folder === null ? [] : listNode(folder, prefix);
   }
 
   public async open(
@@ -60,6 +63,7 @@ export class MegaAccountBlobStore implements BlobStore {
   public async put(key: string, data: Uint8Array): Promise<void> {
     const { path, name } = splitKey(key);
     const folder = await this.folderAt(path, true);
+    if (folder === null) throw new Error(`Could not create "${path}" in MEGA.`);
 
     // MEGA allows same-name siblings, so replacing means deleting first —
     // otherwise republishing a book leaves the store with two of everything.
@@ -77,8 +81,8 @@ export class MegaAccountBlobStore implements BlobStore {
     await node.delete(true);
   }
 
-  /** The library folder, created on first publish. */
-  private async baseFolder(create: boolean): Promise<MegaMutableNode> {
+  /** The library folder, or null when this account has never published. */
+  private async baseFolder(create: boolean): Promise<MegaMutableNode | null> {
     const cached = this.known.get('');
     if (cached !== undefined) return cached;
     const root = this.storage.root;
@@ -89,7 +93,7 @@ export class MegaAccountBlobStore implements BlobStore {
       this.known.set('', existing);
       return existing;
     }
-    if (!create) throw new BlobNotFoundError(this.base);
+    if (!create) return null;
     const created = await root.mkdir?.(this.base);
     if (created === undefined) throw new Error('This MEGA session cannot create folders.');
     this.known.set('', created);
@@ -97,43 +101,46 @@ export class MegaAccountBlobStore implements BlobStore {
   }
 
   /** Resolve (and optionally create) a folder path under the library folder. */
-  private async folderAt(path: string, create: boolean): Promise<MegaMutableNode> {
+  private async folderAt(path: string, create: boolean): Promise<MegaMutableNode | null> {
     const normalized = path
       .split('/')
       .filter((part) => part.length > 0)
       .join('/');
-    let node = await this.baseFolder(create || normalized !== '');
-    if (normalized === '') return node;
+    const base = await this.baseFolder(create || normalized !== '');
+    if (base === null) return null;
+    if (normalized === '') return base;
 
+    let current: MegaMutableNode = base;
     let prefix = '';
     for (const segment of normalized.split('/')) {
       prefix = prefix === '' ? segment : `${prefix}/${segment}`;
       const cached = this.known.get(prefix);
       if (cached !== undefined) {
-        node = cached;
+        current = cached;
         continue;
       }
-      const existing = node.children?.find(
+      const existing = current.children?.find(
         (child) => child.name === segment && isFolder(child),
       );
       if (existing !== undefined) {
-        node = existing;
+        current = existing;
         this.known.set(prefix, existing);
         continue;
       }
-      if (!create) throw new BlobNotFoundError(joinKey(this.base, prefix));
-      const created = await node.mkdir?.(segment);
+      if (!create) return null;
+      const created = await current.mkdir?.(segment);
       if (created === undefined) throw new Error('This MEGA session cannot create folders.');
-      node = created;
+      current = created;
       this.known.set(prefix, created);
     }
-    return node;
+    return current;
   }
 
   /** Resolve one file inside the store. */
   private async nodeAt(key: string): Promise<MegaMutableNode> {
     const { path, name } = splitKey(key);
     const folder = await this.folderAt(path, false);
+    if (folder === null) throw new BlobNotFoundError(key);
     const child = folder.children?.find((node) => node.name === name);
     if (child === undefined) throw new BlobNotFoundError(key);
     return child;
