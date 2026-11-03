@@ -283,21 +283,30 @@ ion-img.cover::part(image) {
   }
 }
 
-.remote-error {
-  margin-top: 8px !important;
-  color: var(--ion-color-danger);
-  font-size: 0.8rem;
-  opacity: 0.9;
+/* The MEGA shelf joins the grid under its own heading. */
+
+.grid-section {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 4px 6px;
 }
 
-/* This device / MEGA switch */
+.grid-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium, #92949c);
+}
 
-.source-bar {
-  --min-height: 44px;
-  --padding-start: 10px;
-  --padding-end: 10px;
-  --background: var(--ion-background-color);
-  --border-width: 0;
+.grid-section-error {
+  color: var(--ion-color-danger);
+}
+
+.tile.remote {
+  cursor: default;
 }
 
 /* Circular checkmark button replacing the sheet modals' "Done" text button. */

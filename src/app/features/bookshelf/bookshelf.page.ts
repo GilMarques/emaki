@@ -88,13 +88,31 @@ export class BookshelfPage {
   private readonly publisher = inject(PackPublisherService);
 
   /** Which shelf is showing: folders on this device, or the MEGA account. */
-  public readonly source = signal<'device' | 'mega'>('device');
   public readonly signedIn = this.account.signedIn;
   public readonly remoteBooks = this.remote.books;
   public readonly remoteCovers = this.remote.covers;
   public readonly remoteLoading = this.remote.loading;
   public readonly remoteError = this.remote.error;
   public readonly publishing = this.publisher.publishing;
+
+  /**
+   * The MEGA shelf is flat, so it joins the grid at the root of the tree —
+   * where the whole library is visible — and not inside a local folder.
+   */
+  public readonly showRemote = computed(() => this.signedIn() && !this.canGoUp());
+
+  /** MEGA books narrowed by the same query as the folders. */
+  public readonly remoteVisible = computed<readonly RemoteBook[]>(() => {
+    if (!this.showRemote()) return [];
+    const q = this.query().trim().toLowerCase();
+    const list = this.remoteBooks();
+    return q.length === 0 ? list : list.filter((b) => b.title.toLowerCase().includes(q));
+  });
+
+  /** True while there is anything remote worth rendering, loading included. */
+  public readonly hasRemote = computed(
+    () => this.showRemote() && (this.remoteLoading() || this.remoteVisible().length > 0),
+  );
 
   /** Books on this device that could be published. */
   public readonly publishableCount = computed(
@@ -187,14 +205,7 @@ export class BookshelfPage {
   /** Confirmation toast message, or null when hidden. */
   public readonly toastMessage = signal<string | null>(null);
 
-  /** Switch between this device's folders and the MEGA account. */
-  public async onSource(event: CustomEvent): Promise<void> {
-    const value = event.detail?.value === 'mega' ? 'mega' : 'device';
-    this.source.set(value);
-    if (value === 'mega') await this.remote.refresh();
-  }
-
-  /** Publish every folder-backed book on this device, then show the shelf. */
+  /** Publish every folder-backed book on this device, then reload the shelf. */
   public async publish(): Promise<void> {
     if (this.publishing()) return;
     try {
@@ -204,10 +215,7 @@ export class BookshelfPage {
       this.toastMessage.set(
         failed ?? `Published ${done} book${done === 1 ? '' : 's'} to MEGA.`,
       );
-      if (failed === null) {
-        this.source.set('mega');
-        await this.remote.refresh();
-      }
+      if (failed === null) await this.remote.refresh();
     } catch (caught) {
       this.toastMessage.set(caught instanceof Error ? caught.message : String(caught));
     }
@@ -281,6 +289,8 @@ export class BookshelfPage {
   constructor() {
     // Populate the tree immediately so the explorer shows structure without a scan.
     void this.scanner.discover();
+    // One page, one shelf: the MEGA books load alongside the local tree.
+    if (this.signedIn()) void this.remote.refresh();
   }
 
   /** Cover art URL for a tile, resolved for real-disk books. */
@@ -389,6 +399,8 @@ export class BookshelfPage {
     }
     await this.scanner.scan();
     this.preloadCovers();
+    // Rescanning the shelf is the natural moment to re-read the account too.
+    if (this.signedIn()) await this.remote.refresh();
   }
 
   /** Pick a folder on disk; it becomes the library root and is scanned. */
