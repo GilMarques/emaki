@@ -585,7 +585,7 @@ export class ViewerPage {
   /** Fling velocity cap at release (px/ms). */
   private static readonly MOMENTUM_MAX_VELOCITY = 3;
 
-  private holdTimer: number | null = null;
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private holdStartX = 0;
   private holdStartY = 0;
   private panBaseX = 0;

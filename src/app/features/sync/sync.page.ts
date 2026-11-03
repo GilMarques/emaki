@@ -1,0 +1,175 @@
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import {
+  IonButton,
+  IonButtons,
+  IonContent,
+  IonHeader,
+  IonIcon,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonListHeader,
+  IonNote,
+  IonSpinner,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/angular/standalone';
+
+import { MenuButtonComponent } from '../../shared/menu-button.component';
+import type { BlobReader } from '../../core/sync/blob-store.port';
+import { listFiles } from '../../core/sync/blob-store.port';
+import { blobReaderFor } from '../../core/sync/mega-folder.blob-reader';
+import { DeviceUiService } from '../../core/sync/device-ui.service';
+import { RemoteLibraryService } from '../../core/sync/remote-library.service';
+import { SyncService } from '../../core/sync/sync.service';
+import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
+
+/** One row in the "how the devices split the work" explanation. */
+interface DeviceRole {
+  readonly icon: string;
+  readonly name: string;
+  readonly detail: string;
+}
+
+/**
+ * Sync setup: where the packs come from, and which devices may read them.
+ *
+ * The page is the introduction to the system, not a dashboard of things that
+ * do not exist yet — every row here is backed by real state. Library storage
+ * is a validated MEGA folder link (read-only, so a reader cannot damage the
+ * library) and devices come from the same registry the sidebar uses.
+ */
+@Component({
+  selector: 'ov-sync',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    IonButton,
+    IonButtons,
+    IonContent,
+    IonHeader,
+    IonIcon,
+    IonInput,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonListHeader,
+    IonNote,
+    IonSpinner,
+    IonTitle,
+    IonToolbar,
+    MenuButtonComponent,
+  ],
+  templateUrl: './sync.page.html',
+  styleUrls: ['./sync.page.scss'],
+})
+export class SyncPage {
+  private readonly remote = inject(RemoteLibraryService);
+  private readonly sync = inject(SyncService);
+  private readonly deviceUi = inject(DeviceUiService);
+
+  /** The configured remote source, or null when none is set up. */
+  public readonly library = this.remote.library;
+  /** Devices paired with this one. */
+  public readonly devices = this.sync.devices;
+  public readonly modeLabels = SYNC_MODE_LABELS;
+
+  /** The three-device split this system is built around. */
+  public readonly roles: readonly DeviceRole[] = [
+    {
+      icon: 'desktop-outline',
+      name: 'Computer',
+      detail: 'Keeps the books and enhances the pages.',
+    },
+    {
+      icon: 'laptop-outline',
+      name: 'Laptop',
+      detail: 'Downloads the series you read at home.',
+    },
+    {
+      icon: 'phone-portrait-outline',
+      name: 'Phone',
+      detail: 'Takes what you need and reads it offline.',
+    },
+  ];
+
+  /** The link being pasted, and why it was rejected. */
+  public readonly link = signal('');
+  public readonly error = signal<string | null>(null);
+
+  /** Result of the last folder check, and whether one is running. */
+  public readonly checking = signal(false);
+  public readonly checkResult = signal<string | null>(null);
+  private reader: BlobReader | null = null;
+
+  public onLink(event: CustomEvent): void {
+    this.link.set(String(event.detail?.value ?? ''));
+    this.error.set(null);
+  }
+
+  /** Validate and store the pasted folder link. */
+  public connect(): void {
+    const result = this.remote.connect(this.link());
+    if (!result.ok) {
+      this.error.set(result.reason);
+      return;
+    }
+    this.reader = null;
+    this.link.set('');
+    this.error.set(null);
+    void this.check();
+  }
+
+  public disconnect(): void {
+    this.reader = null;
+    this.checkResult.set(null);
+    this.remote.forget();
+  }
+
+  /**
+   * Ask the store what is actually in the shared folder.
+   *
+   * Parsing the link only proves it is shaped like a link. This proves the
+   * folder is still shared and reachable — the difference between "connected"
+   * and "connected to something".
+   */
+  public async check(): Promise<void> {
+    const library = this.library();
+    if (library === null || this.checking()) return;
+    this.checking.set(true);
+    this.checkResult.set(null);
+    try {
+      this.reader ??= blobReaderFor(library);
+      const files = await listFiles(this.reader);
+      this.checkResult.set(
+        files.length === 0
+          ? 'The folder is empty — nothing published yet.'
+          : `${files.length} file${files.length === 1 ? '' : 's'} available.`,
+      );
+    } catch (caught) {
+      this.reader = null;
+      this.checkResult.set(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      this.checking.set(false);
+    }
+  }
+
+  public pairDevice(): void {
+    this.deviceUi.openAdd();
+  }
+
+  public forget(device: PairedDevice): void {
+    this.sync.forget(device.id);
+  }
+
+  /** Caption under a paired device: when this computer last reached it. */
+  public lastSeen(device: PairedDevice): string {
+    if (device.lastSeenAt === null) return 'Not contacted yet';
+    const diff = Math.max(0, Date.now() - device.lastSeenAt);
+    if (diff < 60_000) return 'Seen just now';
+    if (diff < 3_600_000) return `Seen ${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `Seen ${Math.floor(diff / 3_600_000)}h ago`;
+    return `Seen ${Math.floor(diff / 86_400_000)}d ago`;
+  }
+}

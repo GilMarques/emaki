@@ -28,6 +28,7 @@ import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { MenuStateService } from './core/services/menu-state.service';
 import { SyncService } from './core/sync/sync.service';
+import { DeviceUiService } from './core/sync/device-ui.service';
 import type { PairedDevice } from './core/sync/pairing.model';
 import { ViewerPage } from './features/viewer/viewer.page';
 import { AddDeviceComponent } from './features/settings/add-device.component';
@@ -84,8 +85,8 @@ export class AppComponent {
   public readonly devicesOpen = signal(false);
   public readonly devicesEvent = signal<Event | undefined>(undefined);
 
-  /** Device modals, shared by the sidebar popover and the Settings page. */
-  public readonly addDeviceOpen = signal(false);
+  /** Device modal state, shared with the Sync page. */
+  public readonly deviceUi = inject(DeviceUiService);
   public readonly sendTarget = signal<PairedDevice | null>(null);
 
   /** Accessible label for the sidebar devices button. */
@@ -150,7 +151,7 @@ export class AppComponent {
   /** Pair a device from the sidebar popover. */
   public openAddDevice(): void {
     this.devicesOpen.set(false);
-    this.addDeviceOpen.set(true);
+    this.deviceUi.openAdd();
   }
 
   /** Forget a device from the sidebar popover. */

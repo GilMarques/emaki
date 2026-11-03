@@ -58,6 +58,18 @@
               <ion-label>Browse</ion-label>
             </ion-item>
           </ion-menu-toggle>
+          <ion-menu-toggle [autoHide]="false">
+            <ion-item
+              button
+              routerLink="/sync"
+              routerLinkActive="selected"
+              aria-label="Sync"
+              title="Sync"
+            >
+              <ion-icon aria-hidden="true" slot="start" name="sync-outline"></ion-icon>
+              <ion-label>Sync</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
         </ion-list>
 
         @if (backgroundTasks().length > 0) {
@@ -160,13 +172,13 @@
 
   <ion-modal
     class="device-modal"
-    [isOpen]="addDeviceOpen()"
-    (didDismiss)="addDeviceOpen.set(false)"
+    [isOpen]="deviceUi.addOpen()"
+    (didDismiss)="deviceUi.closeAdd()"
   >
     <ng-template>
       <ov-add-device
-        [isOpen]="addDeviceOpen()"
-        (dismissed)="addDeviceOpen.set(false)"
+        [isOpen]="deviceUi.addOpen()"
+        (dismissed)="deviceUi.closeAdd()"
       />
     </ng-template>
   </ion-modal>

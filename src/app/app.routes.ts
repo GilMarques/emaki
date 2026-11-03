@@ -34,6 +34,11 @@ export const APP_ROUTES: Routes = [
       import('./features/provider/chapters/chapters.page').then((m) => m.ProviderChaptersPage),
   },
   {
+    path: 'sync',
+    loadComponent: () =>
+      import('./features/sync/sync.page').then((m) => m.SyncPage),
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.page').then((m) => m.SettingsPage),

@@ -37,6 +37,7 @@
     "@openviewer/sync-endpoint": "file:native/sync-endpoint",
     "ionicons": "^7.0.0",
     "jsqr": "^1.4.0",
+    "megajs": "^1.3.10",
     "onnxruntime-web": "^1.31.1",
     "page-flip": "^2.0.7",
     "qrcode": "^1.5.4",

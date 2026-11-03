@@ -1,0 +1,145 @@
+<ion-header>
+  <ion-toolbar class="sync-bar">
+    <ion-buttons slot="start">
+      <ov-menu-button></ov-menu-button>
+    </ion-buttons>
+
+    <ion-title class="sync-title">Sync</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="sync-content">
+  <section class="intro">
+    <h2>One library, three devices</h2>
+    <p>
+      Your computer holds the books. Everything else downloads the packs it
+      needs and keeps them, so reading never waits for a network.
+    </p>
+  </section>
+
+  <div class="roles">
+    @for (role of roles; track role.name) {
+      <div class="role">
+        <ion-icon [name]="role.icon" aria-hidden="true"></ion-icon>
+        <div class="role-text">
+          <span class="role-name">{{ role.name }}</span>
+          <span class="role-detail">{{ role.detail }}</span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <ion-list-header>Library storage</ion-list-header>
+
+  @if (library(); as lib) {
+    <ion-list lines="inset">
+      <ion-item>
+        <ion-icon slot="start" class="state-icon ok" name="cloud-done-outline"></ion-icon>
+        <ion-label>
+          <h2>MEGA folder connected</h2>
+          <p>{{ lib.handle }}</p>
+        </ion-label>
+        <ion-button slot="end" fill="clear" color="danger" (click)="disconnect()">
+          Remove
+        </ion-button>
+      </ion-item>
+      <ion-item>
+        @if (checking()) {
+          <ion-spinner slot="start" name="crescent"></ion-spinner>
+          <ion-label>
+            <h2>Checking the folder…</h2>
+          </ion-label>
+        } @else {
+          <ion-icon slot="start" name="refresh-outline"></ion-icon>
+          <ion-label>
+            <h2>Folder contents</h2>
+            <p>{{ checkResult() ?? 'Not checked yet' }}</p>
+          </ion-label>
+          <ion-button slot="end" fill="outline" (click)="check()">Check</ion-button>
+        }
+      </ion-item>
+    </ion-list>
+    <ion-note class="hint">
+      Packs downloaded from this link stay on this device and open offline.
+    </ion-note>
+  } @else {
+    <ion-list lines="inset">
+      <ion-item>
+        <ion-label position="stacked">Folder link</ion-label>
+        <ion-input
+          [value]="link()"
+          (ionInput)="onLink($event)"
+          placeholder="https://mega.nz/folder/…#…"
+          aria-label="MEGA folder link"
+          autocapitalize="off"
+          autocomplete="off"
+          spellcheck="false"
+        ></ion-input>
+      </ion-item>
+    </ion-list>
+
+    <ion-note class="hint">In MEGA, right-click the folder → Share → Copy link.</ion-note>
+
+    @if (error()) {
+      <ion-note class="error">{{ error() }}</ion-note>
+    }
+
+    <div class="actions">
+      <ion-button [disabled]="!link().trim()" (click)="connect()">Connect storage</ion-button>
+    </div>
+  }
+
+  <ion-list-header>Devices</ion-list-header>
+
+  <ion-list lines="inset">
+    @for (device of devices(); track device.id) {
+      <ion-item>
+        <ion-icon slot="start" name="phone-portrait-outline"></ion-icon>
+        <ion-label>
+          <h2>{{ device.name }}</h2>
+          <p>{{ modeLabels[device.mode] }} · {{ lastSeen(device) }}</p>
+        </ion-label>
+        <ion-button
+          slot="end"
+          fill="clear"
+          color="danger"
+          [attr.aria-label]="'Forget ' + device.name"
+          (click)="forget(device)"
+        >
+          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+        </ion-button>
+      </ion-item>
+    } @empty {
+      <ion-item>
+        <ion-label>
+          <h2>No devices yet</h2>
+          <p>Pair your laptop or phone to share this library with it.</p>
+        </ion-label>
+      </ion-item>
+    }
+  </ion-list>
+
+  <div class="actions">
+    <ion-button fill="outline" (click)="pairDevice()">
+      <ion-icon slot="start" name="add"></ion-icon>
+      Pair a device
+    </ion-button>
+  </div>
+
+  <ion-list-header>How it works</ion-list-header>
+
+  <ul class="facts">
+    <li>
+      <strong>One source.</strong> The computer scans the folders and writes each
+      book into your MEGA folder as a pack of pages.
+    </li>
+    <li>
+      <strong>Readers are read-only.</strong> A shared MEGA folder cannot be
+      written to, so a device can never damage the library.
+    </li>
+    <li>
+      <strong>Paste once.</strong> Every device uses the same link; new books
+      appear in it without re-sharing anything.
+    </li>
+  </ul>
+</ion-content>
