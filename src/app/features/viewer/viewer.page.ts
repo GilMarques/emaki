@@ -230,20 +230,20 @@ export class ViewerPage {
     }
 
     const scale = this.bookstore.zoom();
-    const rendered = this.renderedPageSize();
-    if (rendered === null) {
+    // No pan until a book is mounted. The spread fills the stage; the page
+    // bitmap is letterboxed inside it and is not the transformed box.
+    if (this.renderedPageSize() === null) {
       return { minX: 0, maxX: 0, minY: 0, maxY: 0, overflowX: 0, overflowY: 0 };
     }
 
-    // Book size at the current zoom. (Do NOT fold the DOM canvas rect in here:
-    // it is already scaled, so it would double-count the zoom and over-bloat
-    // the pan range; it is also a side-effecting DOM read inside a computed.)
-    const effW = rendered.width * scale;
-    const effH = rendered.height * scale;
+    // The transform scales the whole stage-sized spread from its top-left,
+    // letterbox included. Pan limits have to be that box, not the page bitmap:
+    // a fitted page is shorter or narrower than the stage, and clamping to the
+    // page forces the cursor-anchor offset back to 0, so the page grows from
+    // the corner instead of the pointer.
+    const effW = stage.width * scale;
+    const effH = stage.height * scale;
 
-    // Oversized pages slide so they always cover the stage. Smaller pages
-    // (zoomed out) can sit anywhere while fully visible — this keeps the
-    // cursor-anchor working when zooming out instead of snapping to center.
     const minX = effW >= stage.width ? -(effW - stage.width) : 0;
     const maxX = effW >= stage.width ? 0 : stage.width - effW;
     const minY = effH >= stage.height ? -(effH - stage.height) : 0;
@@ -538,6 +538,9 @@ export class ViewerPage {
     const stage = this.stageRef()?.nativeElement;
     if (stage === undefined) return;
     const rect = stage.getBoundingClientRect();
+    // Pan limits read this rect. It used to be captured only on pointerdown,
+    // so a wheel before any click clamped the anchor offset to 0.
+    this._hostRect.set(rect);
     const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
     this.applyZoomAround(this.bookstore.zoom() * factor, event.clientX - rect.left, event.clientY - rect.top);
   }
@@ -557,8 +560,8 @@ export class ViewerPage {
 
   /**
    * Zoom to an absolute factor around a stage-anchored point (CSS px, origin
-   * at the stage's top-left). The page point under the anchor stays put while
-   * the page scales, then the pan offset is clamped to the new page bounds.
+   * at the stage's top-left). The spread point under the anchor stays put
+   * while it scales, then the pan offset is clamped to the scaled stage.
    */
   private applyZoomAround(target: number, anchorX: number, anchorY: number): void {
     const oldZoom = this.bookstore.zoom();
