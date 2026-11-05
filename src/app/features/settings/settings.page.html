@@ -25,6 +25,20 @@
       </ion-select>
     </ion-item>
     <ion-item>
+      <ion-icon slot="start" name="compass-outline" aria-hidden="true"></ion-icon>
+      <ion-select
+        label="Provider"
+        [value]="providerId()"
+        (ionChange)="onProviderChange($event)"
+        interface="popover"
+        aria-label="Provider"
+      >
+        @for (provider of providers(); track provider.id) {
+          <ion-select-option [value]="provider.id">{{ provider.label }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
       <ion-icon slot="start" name="sunny-outline" aria-hidden="true"></ion-icon>
       <ion-label>Keep screen awake</ion-label>
       <ion-toggle
@@ -33,6 +47,20 @@
         (ionChange)="onKeepAwakeChange($event)"
         aria-label="Keep screen awake while reading"
       ></ion-toggle>
+    </ion-item>
+    <ion-item>
+      <ion-icon slot="start" name="trash-outline" aria-hidden="true"></ion-icon>
+      <ion-label>Clear history</ion-label>
+      <ion-button
+        slot="end"
+        fill="outline"
+        color="danger"
+        (click)="openClearHistory()"
+        [disabled]="!hasHistory()"
+        aria-label="Clear history"
+      >
+        Clear
+      </ion-button>
     </ion-item>
     <ion-item>
       <ion-label>Reset all settings to defaults</ion-label>
@@ -52,4 +80,12 @@
       </ion-label>
     </ion-item>
   </ion-list>
+
+  <ion-alert
+    [isOpen]="clearOpen()"
+    header="Clear history?"
+    message="Only the list of recently read books is removed. Your library and reading progress stay as they are."
+    [buttons]="clearButtons"
+    (didDismiss)="onClearDismiss($any($event).detail.role)"
+  ></ion-alert>
 </ion-content>

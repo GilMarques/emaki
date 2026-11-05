@@ -6,10 +6,10 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ViewDidEnter } from '@ionic/angular';
 import {
-  IonBackButton,
   IonButtons,
   IonContent,
   IonHeader,
@@ -32,6 +32,7 @@ import {
 import type { Manga } from '../../../core/connectors/connector.model';
 import { ProviderBrowseService } from '../../../core/connectors/provider-browse.service';
 import { CoverComponent } from '../../../shared/cover.component';
+import { MenuButtonComponent } from '../../../shared/menu-button.component';
 
 /**
  * Browse a provider's catalogue: searchbar + results list.
@@ -46,7 +47,6 @@ import { CoverComponent } from '../../../shared/cover.component';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    IonBackButton,
     IonButtons,
     IonContent,
     IonHeader,
@@ -64,6 +64,7 @@ import { CoverComponent } from '../../../shared/cover.component';
     IonToast,
     IonToolbar,
     CoverComponent,
+    MenuButtonComponent,
   ],
   templateUrl: './browse.page.html',
   styleUrls: ['./browse.page.scss'],
@@ -104,8 +105,19 @@ export class ProviderBrowsePage implements ViewDidEnter {
   );
 
   constructor() {
-    const id = this.route.snapshot.paramMap.get('providerId');
-    if (id) this.browse.selectProvider(id);
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const id = params.get('providerId');
+      if (!id) return;
+      const changed = this.browse.provider()?.id !== id;
+      this.browse.selectProvider(id);
+      if (!changed) return;
+      this.results.set([]);
+      this.query.set('');
+      this.lastQuery = '';
+      this.hasSearched.set(false);
+      this.toastMessage.set(null);
+      this.loading.set(false);
+    });
   }
 
   /** Run a search for the given term. */

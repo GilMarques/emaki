@@ -1,6 +1,8 @@
-import { Injectable, effect, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 
+import { ConnectorRegistryService } from '../connectors/connector-registry.service';
 import {
+  DEFAULT_PROVIDER_ID,
   DEFAULT_SETTINGS,
   FILTER_BOUNDS,
   MAGNIFIER_BOUNDS,
@@ -36,8 +38,12 @@ const STORAGE_KEY = 'openviewer:settings:v2';
  */
 @Injectable({ providedIn: 'root' })
 export class SettingsService {
+  private readonly registry = inject(ConnectorRegistryService);
   private readonly _settings = signal<AppSettings>(this.load());
   public readonly settings = this._settings.asReadonly();
+
+  /** Provider Browse opens. A stored id that is no longer registered reads as MangaDex. */
+  public readonly browseProviderId = computed(() => this.resolveProviderId(this._settings().providerId));
 
   constructor() {
     effect(() => {
@@ -82,6 +88,12 @@ export class SettingsService {
 
   public setKeepAwake(value: boolean): void {
     this._settings.update((s) => ({ ...s, display: { ...s.display, keepAwake: value } }));
+  }
+
+  public setProvider(id: string): void {
+    const resolved = this.resolveProviderId(id);
+    if (resolved !== id) return;
+    this._settings.update((s) => ({ ...s, providerId: resolved }));
   }
 
   // ──────────────────────── Filter setters ────────────────────────
@@ -159,6 +171,7 @@ export class SettingsService {
     const i = input as {
       display?: Record<string, unknown>;
       filters?: Record<string, unknown>;
+      providerId?: unknown;
     };
 
     const d = (i.display ?? {}) as Record<string, unknown>;
@@ -188,7 +201,16 @@ export class SettingsService {
       imageSmooth: this.pickFilterMethod(f['imageSmooth'], fallback.filters.imageSmooth),
     };
 
-    return { display, filters };
+    return { display, filters, providerId: this.resolveProviderId(i.providerId) };
+  }
+
+  /** A registered provider id, or MangaDex when the stored value is missing or unknown. */
+  private resolveProviderId(raw: unknown): string {
+    if (typeof raw === 'string') {
+      const found = this.registry.byId(raw);
+      if (found !== undefined) return found.id;
+    }
+    return DEFAULT_PROVIDER_ID;
   }
 
   private pickEnum<T extends string>(

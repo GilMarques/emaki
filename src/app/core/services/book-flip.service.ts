@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 
 import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
 
@@ -83,6 +83,8 @@ export class BookFlipService {
   private readonly bookstore = inject(BookstoreService);
   private readonly enhancement = inject(ScanEnhancementService);
   private readonly filePages = inject(FilePageService);
+  /** Slide animations finish outside the Angular zone. The sheet lock is a signal the root effect reads, so those updates have to re-enter the zone or the gesture stays disabled. */
+  private readonly zone = inject(NgZone);
 
   private instance: PageFlip | null = null;
   private host: HTMLElement | null = null;
@@ -181,6 +183,12 @@ export class BookFlipService {
 
   /** Device pixel ratio the current mount was laid out at. Bounds are in those px. */
   private mountDpr = 1;
+
+  /**
+   * CSS px to add to the lib's page rect. Single-page curl widens the canvas
+   * by a page on each side and shifts it back, so the visible leaf stays put.
+   */
+  private frameShiftX = 0;
 
   /**
    * Mount a PageFlip instance on `host` and load all pages from `book`.
@@ -309,6 +317,15 @@ export class BookFlipService {
       const urls = [...rendered.urls];
       this.loadedUrls = urls;
       pf.loadFromImages(urls);
+      // Single-page curl keeps one leaf on screen, but the canvas is three
+      // pages wide so the fold has a full page of room in both directions.
+      // The spare pages sit outside the stage (or in the letterbox) and are
+      // only there so the curl is not clipped. Fit and zoom stay single-page.
+      if (layout === 'single' && interactiveCurl) {
+        this.widenCurlCanvas(pf, pageSize.width, containerW);
+      } else {
+        this.frameShiftX = 0;
+      }
 
       pf.on('flip', (e) => {
         if (typeof e.data === 'number') {
@@ -321,14 +338,17 @@ export class BookFlipService {
       pf.on('changeState', (e) => {
         const s = e.data;
         if (s !== 'user_fold' && s !== 'fold_corner' && s !== 'flipping' && s !== 'read') return;
-        this._flipState.set(s);
-        // A finger-followed slide turns the canvas early and keeps the old
-        // page on an overlay. Leave the letterbox alone until that gesture ends.
-        if (this.suppressSync) return;
-        // The lib reports the new page index when the leaf lands. Follow the
-        // curl while it is moving so the letterbox arrives with the page.
-        if (s === 'read') this.settleSurround();
-        else this.startFlipTrack();
+        // The curl animation ends in the lib's own frame, outside the zone.
+        this.zone.run(() => {
+          this._flipState.set(s);
+          // A finger-followed slide turns the canvas early and keeps the old
+          // page on an overlay. Leave the letterbox alone until that gesture ends.
+          if (this.suppressSync) return;
+          // The lib reports the new page index when the leaf lands. Follow the
+          // curl while it is moving so the letterbox arrives with the page.
+          if (s === 'read') this.settleSurround();
+          else this.startFlipTrack();
+        });
       });
 
       this.instance = pf;
@@ -347,6 +367,7 @@ export class BookFlipService {
     this._flipState.set(null);
     this._bookPageSize.set(null);
     this._pageFrame.set(null);
+    this.frameShiftX = 0;
     this.logicalIndexByRenderedIndex = [];
     this.renderedIndexByLogicalIndex = [];
     if (this.instance === null) return;
@@ -532,15 +553,17 @@ export class BookFlipService {
     );
 
     const finish = (): void => {
-      overlay.remove();
-      inAnimation.cancel();
-      outAnimation.cancel();
-      this.slideCleanup = null;
-      this.suppressSync = false;
-      this.stopSlideSurround(target);
-      const rendered = this.instance?.getCurrentPageIndex();
-      if (rendered !== undefined) this.syncPageIndex(rendered);
-      this._turning.set(false);
+      this.zone.run(() => {
+        overlay.remove();
+        inAnimation.cancel();
+        outAnimation.cancel();
+        this.slideCleanup = null;
+        this.suppressSync = false;
+        this.stopSlideSurround(target);
+        const rendered = this.instance?.getCurrentPageIndex();
+        if (rendered !== undefined) this.syncPageIndex(rendered);
+        this._turning.set(false);
+      });
     };
     this.slideCleanup = finish;
     this._turning.set(true);
@@ -784,16 +807,23 @@ export class BookFlipService {
       this.suppressSync = true;
       this.turnToPage(slide.originIndex);
     }
-    slide.overlay.remove();
-    slide.canvas.style.transform = '';
-    this.suppressSync = false;
     const settled = commit ? slide.targetRendered : slide.originRendered;
-    if (commit) {
-      const rendered = this.instance?.getCurrentPageIndex();
-      if (rendered !== undefined) this.syncPageIndex(rendered);
-    }
-    this.stopSlideSurround(settled);
-    this._turning.set(false);
+    // The settle animation resolves outside Angular. Re-enter the zone so the
+    // reader sheet, which locks itself off this state, is allowed to move again.
+    this.zone.run(() => {
+      try {
+        slide.overlay.remove();
+        slide.canvas.style.transform = '';
+        this.suppressSync = false;
+        if (commit) {
+          const rendered = this.instance?.getCurrentPageIndex();
+          if (rendered !== undefined) this.syncPageIndex(rendered);
+        }
+      } finally {
+        this.stopSlideSurround(settled);
+        this._turning.set(false);
+      }
+    });
   }
 
   /** Forget an in-flight slide without touching the bookshelf. The mount is going away. */
@@ -873,6 +903,22 @@ export class BookFlipService {
       x: ((clientX - rect.left) / scale) * dpr,
       y: ((clientY - rect.top) / scale) * dpr,
     };
+  }
+
+  /**
+   * Give a single-page curl one spare page of canvas on each side of the
+   * visible leaf. The leaf stays the size `computePageDimensions` chose for
+   * a single page; the stage clips the spare so zoom still frames one page.
+   */
+  private widenCurlCanvas(pf: PageFlip, pageWidth: number, blockWidth: number): void {
+    const canvas = pf.getUI().getDistElement();
+    const width = pageWidth * 3;
+    const left = (blockWidth - width) / 2;
+    canvas.style.width = `${width}px`;
+    canvas.style.left = `${left}px`;
+    this.frameShiftX = left / this.mountDpr;
+    const ui = pf.getUI() as { update?: () => void };
+    ui.update?.();
   }
 
   /** Strip page-flip DOM/state from the host so a fresh instance can mount. */
@@ -958,7 +1004,7 @@ export class BookFlipService {
     const rect = instance.getBoundsRect();
     const dpr = this.mountDpr;
     const onRight = this.drawnOnRight(renderedIndex);
-    const x = (onRight ? rect.left + rect.pageWidth : rect.left) / dpr;
+    const x = (onRight ? rect.left + rect.pageWidth : rect.left) / dpr + this.frameShiftX;
     this._pageFrame.set({
       x,
       y: rect.top / dpr,
@@ -1138,8 +1184,13 @@ export class BookFlipService {
     }
     if (settledRendered !== null) this.applySurround(settledRendered);
     if (!this._surroundLive()) return;
+    // One frame later, still inside the zone, so the reader sheet's lock
+    // actually releases. A raw animation frame would update the signal
+    // without Angular noticing, and the sheet would stay stuck shut.
     requestAnimationFrame(() => {
-      if (this.slideColor === null) this._surroundLive.set(false);
+      this.zone.run(() => {
+        if (this.slideColor === null) this._surroundLive.set(false);
+      });
     });
   }
 

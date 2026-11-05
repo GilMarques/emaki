@@ -20,24 +20,6 @@ ion-toolbar.history-bar {
   letter-spacing: -0.01em;
 }
 
-.bar-actions {
-  margin-inline-end: 2px;
-}
-
-.bar-icon {
-  width: 36px;
-  height: 36px;
-  margin: 0 1px;
-  --padding-start: 0;
-  --padding-end: 0;
-  --background: transparent;
-  --color: var(--ion-color-medium, #92949c);
-
-  ion-icon {
-    font-size: 20px;
-  }
-}
-
 /* Day sections. */
 
 .group {

@@ -7,8 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import {
-  IonAlert,
-  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
@@ -48,8 +46,6 @@ interface HistoryGroup {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    IonAlert,
-    IonButton,
     IonButtons,
     IonContent,
     IonHeader,
@@ -72,13 +68,6 @@ export class HistoryPage {
 
   public readonly entries = this.history.entries;
   public readonly hasEntries = this.history.hasEntries;
-
-  /** Confirmation alert for the header's clear button. */
-  public readonly clearOpen = signal(false);
-  public readonly clearButtons = [
-    { text: 'Cancel', role: 'cancel' },
-    { text: 'Clear', role: 'destructive' },
-  ];
 
   public readonly toastMessage = signal<string | null>(null);
 
@@ -180,15 +169,6 @@ export class HistoryPage {
 
   public remove(entry: HistoryEntry): void {
     this.history.remove(entry.bookId);
-  }
-
-  public openClear(): void {
-    this.clearOpen.set(true);
-  }
-
-  public onClearDismiss(role: string | undefined): void {
-    this.clearOpen.set(false);
-    if (role === 'destructive') this.history.clear();
   }
 }
 

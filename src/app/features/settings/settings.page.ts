@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
+  IonAlert,
   IonButton,
   IonButtons,
   IonContent,
@@ -17,8 +18,10 @@ import {
   IonToolbar,
 } from '@ionic/angular/standalone';
 
+import { ConnectorRegistryService } from '../../core/connectors/connector-registry.service';
 import type { InterfaceTheme } from '../../core/models/settings.model';
 import { MenuButtonComponent } from '../../shared/menu-button.component';
+import { HistoryService } from '../../core/services/history.service';
 import { SettingsService } from '../../core/services/settings.service';
 
 const THEME_OPTIONS: readonly { value: InterfaceTheme; label: string }[] = [
@@ -37,6 +40,7 @@ const THEME_OPTIONS: readonly { value: InterfaceTheme; label: string }[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    IonAlert,
     IonButton,
     IonButtons,
     IonContent,
@@ -58,10 +62,22 @@ const THEME_OPTIONS: readonly { value: InterfaceTheme; label: string }[] = [
 })
 export class SettingsPage {
   private readonly settings = inject(SettingsService);
+  private readonly history = inject(HistoryService);
+  private readonly registry = inject(ConnectorRegistryService);
 
   public readonly themes = THEME_OPTIONS;
+  public readonly providers = this.registry.list;
+  public readonly providerId = this.settings.browseProviderId;
   public readonly theme = computed(() => this.settings.settings().display.interfaceTheme);
   public readonly keepAwake = computed(() => this.settings.settings().display.keepAwake);
+  public readonly hasHistory = this.history.hasEntries;
+
+  /** Confirmation before the reading list is wiped. */
+  public readonly clearOpen = signal(false);
+  public readonly clearButtons = [
+    { text: 'Cancel', role: 'cancel' },
+    { text: 'Clear', role: 'destructive' },
+  ];
 
   public onKeepAwakeChange(event: CustomEvent<{ checked: boolean }>): void {
     this.settings.setKeepAwake(event.detail.checked);
@@ -72,7 +88,21 @@ export class SettingsPage {
     if (v === 'auto' || v === 'light' || v === 'dark') this.settings.setInterfaceTheme(v);
   }
 
+  public onProviderChange(event: CustomEvent<{ value: string | undefined }>): void {
+    const id = event.detail.value;
+    if (typeof id === 'string') this.settings.setProvider(id);
+  }
+
   public resetToDefaults(): void {
     this.settings.resetToDefaults();
+  }
+
+  public openClearHistory(): void {
+    this.clearOpen.set(true);
+  }
+
+  public onClearDismiss(role: string | undefined): void {
+    this.clearOpen.set(false);
+    if (role === 'destructive') this.history.clear();
   }
 }

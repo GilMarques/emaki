@@ -1,4 +1,7 @@
-import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, Routes } from '@angular/router';
+
+import { SettingsService } from './core/services/settings.service';
 
 /** App routes. Pages are top-level; navigation is driven by the side menu
  *  (see app.component.html). The Viewer is an overlay on top. */
@@ -20,8 +23,11 @@ export const APP_ROUTES: Routes = [
   },
   {
     path: 'provider',
-    loadComponent: () =>
-      import('./features/provider/provider.page').then((m) => m.ProviderPage),
+    pathMatch: 'full',
+    redirectTo: () => {
+      const id = inject(SettingsService).browseProviderId();
+      return inject(Router).createUrlTree(['/provider', id]);
+    },
   },
   {
     path: 'provider/:providerId',

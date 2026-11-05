@@ -69,6 +69,9 @@ imports: [
 })
 export class AppComponent {
   private readonly settings = inject(SettingsService);
+
+  /** Catalogue Browse opens: the provider chosen in Settings, MangaDex by default. */
+  public readonly browseProviderId = this.settings.browseProviderId;
   private readonly bookstore = inject(BookstoreService);
   private readonly tasks = inject(TaskManagerService);
   private readonly account = inject(MegaAccountService);

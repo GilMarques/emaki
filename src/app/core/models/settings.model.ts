@@ -136,9 +136,14 @@ export interface FilterSettings {
   readonly imageSmooth: FilterMethod;
 }
 
+/** Catalogue Browse opens when the menu item is tapped. */
+export const DEFAULT_PROVIDER_ID = 'mangadex';
+
 export interface AppSettings {
   readonly display: DisplaySettings;
   readonly filters: FilterSettings;
+  /** Registered provider id. Unknown stored values load as MangaDex. */
+  readonly providerId: string;
 }
 
 /** Defaults — keep in one place so the service, tests, and reset share them. */
@@ -162,6 +167,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     grain: { enabled: false, value: 0 },
     imageSmooth: { method: 'none' },
   },
+  providerId: DEFAULT_PROVIDER_ID,
 };
 
 /** Bounds for Filters sliders — used by the UI and by SettingsService setters. */

@@ -589,6 +589,11 @@ export class ViewerPage {
   private static readonly HOLD_MS = 300;
   /** Height of the tap zone at the bottom of the screen that opens the pages menu. */
   private static readonly PAGES_MENU_ZONE = 72;
+  /**
+   * Downward drags that start in this strip belong to the reader sheet, so
+   * vertical mode can still be closed from the top of the screen.
+   */
+  private static readonly SHEET_DISMISS_PX = 72;
   /** Horizontal slide-out duration for the book-boundary transition (ms). */
   private static readonly BOOK_TRANSITION_MS = 300;
   /** Fraction of the viewport a boundary swipe must cover to commit. */
@@ -629,9 +634,18 @@ export class ViewerPage {
   private pageDragActive = false;
   /** Pointer position on the slide axis where that drag began. */
   private pageSlideOrigin = 0;
+  /** This press started in the sheet's dismiss strip. The viewer stays out of it. */
+  private sheetDismissing = false;
 
   public onStagePointerDown(event: PointerEvent): void {
     if (event.button !== 0) return;
+    // Vertical mode uses a downward drag for the previous page. A drag that
+    // starts at the top of the screen is the sheet dismiss instead, so leave
+    // the pointer to ion-modal and don't capture it.
+    if (this.slideAxis() === 'vertical' && this.isSheetDismissZone(event.clientY)) {
+      this.sheetDismissing = true;
+      return;
+    }
     const stage = this.stageRef()?.nativeElement;
     if (stage === undefined) return;
     // Ignore input while a turn animation is running.
@@ -675,6 +689,7 @@ export class ViewerPage {
   }
 
   public onStagePointerMove(event: PointerEvent): void {
+    if (this.sheetDismissing) return;
     if (this.pinch !== null) {
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       this.updatePinch();
@@ -719,6 +734,11 @@ export class ViewerPage {
   }
 
   public onStagePointerUp(event: PointerEvent): void {
+    if (this.sheetDismissing) {
+      this.sheetDismissing = false;
+      this.pointers.delete(event.pointerId);
+      return;
+    }
     this.pointers.delete(event.pointerId);
     if (this.pinch !== null || this.pinchConsumed) {
       // The pinch owns this gesture: keep the zoom it reached and let the
@@ -845,6 +865,14 @@ export class ViewerPage {
   /** True when a tap lands in the bottom strip that opens the pages menu. */
   private isBottomZoneTap(clientY: number): boolean {
     return clientY >= window.innerHeight - ViewerPage.PAGES_MENU_ZONE;
+  }
+
+  /** Top strip of the screen, under the status bar, where a pull closes the reader. */
+  private isSheetDismissZone(clientY: number): boolean {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--ion-safe-area-top');
+    const safe = Number.parseFloat(raw);
+    const top = Number.isFinite(safe) ? safe : 0;
+    return clientY <= top + ViewerPage.SHEET_DISMISS_PX;
   }
 
   /**
@@ -1334,6 +1362,7 @@ export class ViewerPage {
     this.stopMomentum();
     this.gestureAxis = null;
     this.bookDragActive = false;
+    this.sheetDismissing = false;
     this.abortPageSlide();
     this.magnifierState.endGesture();
   }
@@ -1345,6 +1374,7 @@ export class ViewerPage {
       this.stopMomentum();
       this.gestureAxis = null;
       this.bookDragActive = false;
+      this.sheetDismissing = false;
       this.abortPageSlide();
       this.magnifierState.endGesture();
     }

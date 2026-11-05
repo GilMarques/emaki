@@ -49,7 +49,7 @@
           <ion-menu-toggle [autoHide]="false">
             <ion-item
               button
-              routerLink="/provider"
+              [routerLink]="['/provider', browseProviderId()]"
               routerLinkActive="selected"
               aria-label="Browse"
               title="Browse"
