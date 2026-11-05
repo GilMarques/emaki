@@ -4,7 +4,6 @@ import type { Book, Page } from '../models/book.model';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
 import { PageAssetService, cacheKeyString, sourceHashFor } from './page-asset.service';
-import { SettingsService } from './settings.service';
 import { RealEsrganPluginService } from '../native/real-esrgan.plugin';
 import { TaskManagerService } from '../tasks/task-manager.service';
 import type { TaskStatus } from '../tasks/task-manager.model';
@@ -20,24 +19,14 @@ import {
 } from '../models/scan-enhancement.model';
 
 const STORAGE_PREFIX = 'openviewer:enhancement:';
-/** Per-series window state (budget bookkeeping, frontier). */
+/** Per-series window state (frontier and anchor). */
 const SERIES_PREFIX = 'openviewer:enhancement-series:';
 
 /**
- * Fallback size of one enhanced page when nothing has been measured yet.
- * Measured on device: a 1800 px WebP derivative of a typical manga page is
- * ~450 KB.
- */
-const DEFAULT_BYTES_PER_PAGE = 450 * 1024;
-
-/**
- * A series being enhanced under a rolling disk budget.
+ * A series being enhanced together.
  *
  * `bookIds` is the series in reading order. `frontier` is the next book to
- * enhance; `anchor` is the book the reader is on (or last was). The window
- * rolls forward as the reader moves: books ahead of the anchor are queued
- * until the budget is full, and the oldest enhanced books are dropped to
- * make room for the next ones.
+ * enhance; `anchor` is the book the reader is on (or last was).
  */
 interface SeriesWindow {
   readonly seriesId: string;
@@ -48,11 +37,9 @@ interface SeriesWindow {
   anchor: number;
 }
 
-/** Public snapshot of a series' budget usage, for the UI. */
+/** Public snapshot of a series' enhancement progress, for the UI. */
 export interface SeriesEnhancementState {
   readonly seriesId: string;
-  /** Budget in bytes (0 = unlimited). */
-  readonly budgetBytes: number;
   /** Bytes the enhanced derivatives of this series currently occupy. */
   readonly usedBytes: number;
   /** How many of the series' books are enhanced right now. */
@@ -110,7 +97,6 @@ export class ScanEnhancementService {
   private readonly assets = inject(PageAssetService);
   private readonly filePages = inject(FilePageService);
   private readonly tasks = inject(TaskManagerService);
-  private readonly appSettings = inject(SettingsService);
 
   private readonly _capabilities = signal<EnhancementCapabilities>({
     available: false,
@@ -572,9 +558,8 @@ export class ScanEnhancementService {
       const index = series.bookIds.indexOf(bookId);
       if (index < 0 || series.anchor === index) continue;
       series.anchor = index;
-      // Reading backwards re-opens the window over the books behind the new
-      // position: they may have been dropped on the way forward. The same goes
-      // for a chapter that was dropped from the far end of the run.
+      // A book that is not enhanced yet is queued from here, including when
+      // the reader moves back to one the window had already passed.
       if (index < series.frontier || this.bookBytes(bookId) === 0) {
         series.frontier = index;
       }
@@ -607,111 +592,21 @@ export class ScanEnhancementService {
     return undefined;
   }
 
-  /**
-   * Roll the window: drop the enhanced books that no longer fit the budget,
-   * then queue the books ahead of the reader that do.
-   *
-   * The budget is measured against COMMITTED bytes — what is on disk plus
-   * what the queued books are about to write — otherwise the queue would
-   * happily book the whole series before a single page had landed.
-   */
+  /** Queue every remaining book in the series. */
   private rebalance(series: SeriesWindow): void {
-    const budget = this.budgetBytes();
     const anchor = this.anchorFor(series);
     if (anchor !== series.anchor) {
       series.anchor = anchor;
-      // Reading backwards re-opens the window over the books behind the new
-      // position: they may have been dropped on the way forward.
       if (anchor < series.frontier) series.frontier = anchor;
     }
 
-    // 1. Give the space back: the books behind the reader are the ones that
-    //    have served their purpose. The chapter just finished is protected.
-    if (budget > 0) {
-      let total = this.committedBytes(series);
-      while (total > budget) {
-        const victim = this.pickVictim(series);
-        if (victim === null) break;
-        total -= this.bookCommittedBytes(series, victim);
-        this.evictBook(victim);
-      }
-    }
-
-    // 2. Spend it again: queue the books ahead of the reader. Only the AHEAD
-    //    of the window counts against the budget here — the books behind are
-    //    on their way out, and the chapter being read is already paid for.
-    const perPage = this.averageBytesPerPage(series);
-    let ahead = this.aheadCommittedBytes(series);
     while (series.frontier < series.bookIds.length) {
-      const bookId = series.bookIds[series.frontier];
-      const pages = this._jobs().get(bookId)?.pages.length ?? 0;
-      // A book that is already enhanced costs nothing more — it must not stop
-      // the queue, or the window could never roll back over it.
-      const already = this.bookBytes(bookId);
-      const cost = already > 0 ? 0 : Math.round(pages * perPage);
-      const single = series.bookIds.length === 1;
-      if (!single && budget > 0 && ahead + cost > budget) break;
-      this.enableBook(bookId);
-      ahead += cost;
+      this.enableBook(series.bookIds[series.frontier]);
       series.frontier++;
     }
 
     this.persistSeries(series);
     this.publishSeriesState(series);
-  }
-
-  /**
-   * Pick the book to drop when the series is over budget.
-   *
-   * Only the books BEHIND the reader are dropped, furthest behind first: the
-   * chapters ahead are the ones the reader is about to open, and dropping one
-   * would leave a hole in the enhanced run. The book being read and the one
-   * just finished are never candidates — the reader keeps the chapter they
-   * just closed — and neither is a book with work in flight.
-   *
-   * When every candidate is protected the series stays a little over budget
-   * (by the one protected chapter) rather than punching a hole in the run.
-   */
-  private pickVictim(series: SeriesWindow): string | null {
-    const anchor = series.anchor;
-    const behind: string[] = [];
-    series.bookIds.forEach((id, index) => {
-      if (index >= anchor) return;
-      if (index === anchor - 1) return;
-      if (id === this._displayedBookId()) return;
-      if (this._activeSlot?.bookId === id) return;
-      if (this.bookBytes(id) === 0) return;
-      behind.push(id);
-    });
-    return behind.length > 0 ? behind[0] : null;
-  }
-
-  /**
-   * Drop a book's derivatives and stop enhancing it. The book stays part of
-   * the series, so the window can pick it up again if it rolls back.
-   */
-  private evictBook(bookId: string): void {
-    const uris = this.collectDerivativeUris(bookId);
-    if (uris.length > 0) {
-      const queued = this._gcQueue.get(bookId) ?? [];
-      this._gcQueue.set(bookId, [...new Set([...queued, ...uris])]);
-    }
-    const job = this._jobs().get(bookId);
-    if (job !== undefined) {
-      job.enabled = false;
-      job.state = new Map();
-      this._jobs.update((m) => new Map(m).set(bookId, job));
-    }
-    this.tasks.remove(bookId, 'upscale');
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_PREFIX + bookId);
-      } catch {
-        // ignore
-      }
-    }
-    this.gc();
-    this._revision.update((r) => r + 1);
   }
 
   /** Queue a book for enhancement (the window decides which ones qualify). */
@@ -748,37 +643,6 @@ export class ScanEnhancementService {
     return total;
   }
 
-  /**
-   * Bytes a book occupies once its queued pages are written: what is on disk
-   * now plus an estimate for the pages still to come.
-   */
-  private bookCommittedBytes(series: SeriesWindow, bookId: string): number {
-    const job = this._jobs().get(bookId);
-    if (job === undefined) return 0;
-    const done = this.bookBytes(bookId);
-    if (!job.enabled) return done;
-    let completed = 0;
-    for (const s of job.state.values()) if (isComplete(s)) completed++;
-    const remaining = Math.max(0, job.pages.length - completed);
-    return done + remaining * this.averageBytesPerPage(series);
-  }
-
-  /** What the whole series occupies once its queued work is written. */
-  private committedBytes(series: SeriesWindow): number {
-    let total = 0;
-    for (const id of series.bookIds) total += this.bookCommittedBytes(series, id);
-    return total;
-  }
-
-  /** What the books AHEAD of the reader occupy once their work is written. */
-  private aheadCommittedBytes(series: SeriesWindow): number {
-    let total = 0;
-    for (let i = series.anchor; i < series.bookIds.length; i++) {
-      total += this.bookCommittedBytes(series, series.bookIds[i]);
-    }
-    return total;
-  }
-
   /** How many of the series' books are enhanced right now. */
   private seriesBookCount(series: SeriesWindow): number {
     let count = 0;
@@ -786,32 +650,9 @@ export class ScanEnhancementService {
     return count;
   }
 
-  /** Measured average size of an enhanced page in this series. */
-  private averageBytesPerPage(series: SeriesWindow): number {
-    let bytes = 0;
-    let pages = 0;
-    for (const id of series.bookIds) {
-      const job = this._jobs().get(id);
-      if (job === undefined) continue;
-      for (const s of job.state.values()) {
-        if (!isComplete(s)) continue;
-        bytes += s.bytes;
-        pages++;
-      }
-    }
-    if (pages === 0) return DEFAULT_BYTES_PER_PAGE;
-    return bytes / pages;
-  }
-
-  /** The disk budget for one series (0 = unlimited). */
-  private budgetBytes(): number {
-    return this.appSettings.settings().enhancement.seriesBudgetBytes;
-  }
-
   private publishSeriesState(series: SeriesWindow): void {
     const state: SeriesEnhancementState = {
       seriesId: series.seriesId,
-      budgetBytes: this.budgetBytes(),
       usedBytes: this.seriesBytes(series),
       booksEnhanced: this.seriesBookCount(series),
       booksTotal: series.bookIds.length,

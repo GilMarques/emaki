@@ -26,7 +26,6 @@ import { LogService } from './core/services/log.service';
 import { SettingsService } from './core/services/settings.service';
 import { BookstoreService } from './core/services/bookstore.service';
 import { MenuStateService } from './core/services/menu-state.service';
-import { SyncService } from './core/sync/sync.service';
 import { MegaAccountService } from './core/sync/mega-account.service';
 import { ViewerPage } from './features/viewer/viewer.page';
 
@@ -62,15 +61,11 @@ export class AppComponent {
   private readonly settings = inject(SettingsService);
   private readonly bookstore = inject(BookstoreService);
   private readonly tasks = inject(TaskManagerService);
-  private readonly sync = inject(SyncService);
   private readonly account = inject(MegaAccountService);
   private readonly menuController = inject(MenuController);
 
   /** Docked sidebar state (shared with every page's menu button). */
   public readonly menu = inject(MenuStateService);
-
-  /** Devices this computer may hand books to (shown as a count on Sync). */
-  public readonly devices = this.sync.devices;
 
   /** Health of the MEGA connection, shown as the dot beside Sync. */
   public readonly syncHealth = this.account.health;

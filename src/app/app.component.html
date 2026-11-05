@@ -98,8 +98,7 @@
             <ion-icon aria-hidden="true" name="settings"></ion-icon>
           </a>
 
-          <!-- Devices live on the Sync page; this is its shortcut, and the
-               dot is the health of the MEGA connection. -->
+          <!-- Shortcut to the MEGA account. The dot is whether it answered. -->
           <a
             class="menu-bottom-sync"
             routerLink="/sync"
@@ -116,9 +115,6 @@
               [class.unknown]="syncHealth() === 'unknown'"
             ></span>
             <span class="label">Sync</span>
-            @if (devices().length > 0) {
-              <span class="count">{{ devices().length }}</span>
-            }
           </a>
         </div>
       </ion-footer>
@@ -142,8 +138,6 @@
       <ov-viewer />
     </ng-template>
   </ion-modal>
-
-  <!-- Device modals live on the Sync page, which owns the device list. -->
 
   @if (grainOpacity() > 0) {
     <div class="grain-overlay" [style.opacity]="grainOpacity()" aria-hidden="true"></div>

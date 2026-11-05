@@ -114,21 +114,7 @@ ion-menu ion-footer {
   white-space: nowrap;
 }
 
-.menu-bottom-sync .count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--ion-color-primary, #35a77c);
-  color: var(--ion-color-primary-contrast, #fff);
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-
-/* Device pairing and send-to-device sheets, opened from the Sync page. */
+/* Account sheet, opened from the Sync page. */
 ion-modal.device-modal {
   --height: auto;
   --max-height: 88vh;

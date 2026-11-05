@@ -18,16 +18,11 @@ import {
 } from '@ionic/angular/standalone';
 
 import { MenuButtonComponent } from '../../shared/menu-button.component';
-import { AddDeviceComponent } from '../../shared/add-device.component';
-import { SendBookComponent } from '../../shared/send-book.component';
 import { MegaAccountService } from '../../core/sync/mega-account.service';
-import { SyncService } from '../../core/sync/sync.service';
 import { RemoteShelfService } from '../../core/sync/remote-shelf.service';
-import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.model';
 
 /**
- * Sync: the MEGA account this device reads from, and the devices it can hand
- * books to over the LAN.
+ * Sync: the MEGA account this device reads from.
  *
  * The library itself lives on the Library page — publishing and previews
  * belong where the books are, not in account settings.
@@ -53,24 +48,14 @@ import { SYNC_MODE_LABELS, type PairedDevice } from '../../core/sync/pairing.mod
     IonTitle,
     IonToolbar,
     MenuButtonComponent,
-    AddDeviceComponent,
-    SendBookComponent,
   ],
   templateUrl: './sync.page.html',
   styleUrls: ['./sync.page.scss'],
 })
 export class SyncPage {
-  private readonly sync = inject(SyncService);
   private readonly account = inject(MegaAccountService);
   private readonly remote = inject(RemoteShelfService);
 
-  /** Devices paired with this one, for handing books over the LAN. */
-  public readonly devices = this.sync.devices;
-  public readonly modeLabels = SYNC_MODE_LABELS;
-
-  /** Pairing and send sheets. */
-  public readonly addDeviceOpen = signal(false);
-  public readonly sendTarget = signal<PairedDevice | null>(null);
   /** The MEGA account sheet: sign in, or sign out. */
   public readonly megaOpen = signal(false);
 
@@ -138,31 +123,5 @@ export class SyncPage {
 
   public openAccount(): void {
     this.megaOpen.set(true);
-  }
-
-  public pairDevice(): void {
-    this.addDeviceOpen.set(true);
-  }
-
-  public closeSend(): void {
-    this.sendTarget.set(null);
-  }
-
-  public sendTo(device: PairedDevice): void {
-    this.sendTarget.set(device);
-  }
-
-  public forget(device: PairedDevice): void {
-    this.sync.forget(device.id);
-  }
-
-  /** Caption under a paired device: when this computer last reached it. */
-  public lastSeen(device: PairedDevice): string {
-    if (device.lastSeenAt === null) return 'Not contacted yet';
-    const diff = Math.max(0, Date.now() - device.lastSeenAt);
-    if (diff < 60_000) return 'Seen just now';
-    if (diff < 3_600_000) return `Seen ${Math.floor(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `Seen ${Math.floor(diff / 3_600_000)}h ago`;
-    return `Seen ${Math.floor(diff / 86_400_000)}d ago`;
   }
 }

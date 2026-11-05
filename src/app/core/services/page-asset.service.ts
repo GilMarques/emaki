@@ -13,8 +13,7 @@ const WEB_ENHANCED_DIR = `${APP_STORAGE_DIR}/_enhanced`;
 /** Where native derivatives physically live. The Android plugin maps
  *  `enhanced/<name>` to `<app cache>/enhanced/<name>`, i.e. Directory.Cache —
  *  not Directory.Documents. Reading the wrong directory made `exists()` always
- *  false, so every re-enabled book re-ran the whole enhancement queue and
- *  `enforceBudget` never evicted anything. */
+ *  false, so every re-enabled book re-ran the whole enhancement queue. */
 const NATIVE_DIRECTORY = Directory.Cache;
 
 /** Stable, filesystem-safe hash of an arbitrary string (FNV-1a, base36). */
@@ -172,59 +171,5 @@ export class PageAssetService {
     const at = uri.lastIndexOf(marker);
     if (at >= 0) return uri.slice(at + marker.length);
     return uri;
-  }
-
-  /**
-   * Evict derivatives until at most `budgetBytes` would remain, oldest-first.
-   * Returns the number of files removed. Web derivatives live in page storage
-   * and are metered/deleted the same way, through `sizeOf`/`delete`.
-   */
-  public async enforceBudget(uris: readonly string[], budgetBytes: number): Promise<number> {
-    if (!Capacitor.isNativePlatform()) {
-      const sizes = new Map<string, number>();
-      let used = 0;
-      for (const uri of uris) {
-        const size = await this.sizeOf(uri);
-        sizes.set(uri, size);
-        used += size;
-      }
-      if (used <= budgetBytes) return 0;
-      let removed = 0;
-      for (const uri of uris) {
-        if (used <= budgetBytes) break;
-        used -= sizes.get(uri) ?? 0;
-        await this.delete(uri);
-        removed++;
-      }
-      return removed;
-    }
-    let removed = 0;
-    let used = 0;
-    const paths = new Map<string, string>();
-    for (const uri of uris) {
-      const path = await this.relativeToCache(uri);
-      paths.set(uri, path);
-      try {
-        const stat = await Filesystem.stat({ path, directory: NATIVE_DIRECTORY });
-        used += stat.size ?? 0;
-      } catch {
-        continue;
-      }
-    }
-    if (used <= budgetBytes) return 0;
-    for (const uri of uris) {
-      if (used <= budgetBytes) break;
-      const path = paths.get(uri);
-      if (path === undefined) continue;
-      try {
-        const stat = await Filesystem.stat({ path, directory: NATIVE_DIRECTORY });
-        await Filesystem.deleteFile({ path, directory: NATIVE_DIRECTORY });
-        used -= stat.size ?? 0;
-        removed++;
-      } catch {
-        // ignore
-      }
-    }
-    return removed;
   }
 }

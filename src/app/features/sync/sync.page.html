@@ -5,13 +5,6 @@
     </ion-buttons>
 
     <ion-title class="sync-title">Sync</ion-title>
-
-    <ion-buttons slot="end">
-      <ion-button (click)="pairDevice()">
-        <ion-icon slot="start" name="add"></ion-icon>
-        Add Device
-      </ion-button>
-    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
@@ -33,53 +26,6 @@
       </ion-item>
     }
   </ion-list>
-
-  @if (devices().length > 0) {
-    <ion-list lines="inset">
-      @for (device of devices(); track device.id) {
-        <ion-item>
-          <ion-icon slot="start" name="phone-portrait-outline"></ion-icon>
-          <ion-label>
-            <h2>{{ device.name }}</h2>
-            <p>{{ modeLabels[device.mode] }} · {{ lastSeen(device) }}</p>
-          </ion-label>
-          <ion-button
-            slot="end"
-            fill="clear"
-            [attr.aria-label]="'Send a book to ' + device.name"
-            [title]="'Send a book to ' + device.name"
-            (click)="sendTo(device)"
-          >
-            <ion-icon slot="icon-only" name="book-outline"></ion-icon>
-          </ion-button>
-          <ion-button
-            slot="end"
-            fill="clear"
-            color="danger"
-            [attr.aria-label]="'Forget ' + device.name"
-            (click)="forget(device)"
-          >
-            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
-          </ion-button>
-        </ion-item>
-      }
-    </ion-list>
-  } @else {
-    <div class="empty-devices">
-      <img
-        class="empty-devices-art"
-        src="assets/illustrations/no-devices.png"
-        alt=""
-        width="200"
-        height="200"
-      />
-      <h2 class="empty-devices-title">No devices connected</h2>
-      <ion-button (click)="pairDevice()">
-        <ion-icon slot="start" name="add"></ion-icon>
-        Add device
-      </ion-button>
-    </div>
-  }
 
   <ion-modal
     class="device-modal"
@@ -142,33 +88,6 @@
           </ion-button>
         </div>
       </div>
-    </ng-template>
-  </ion-modal>
-
-  <ion-modal
-    class="device-modal"
-    [isOpen]="addDeviceOpen()"
-    (didDismiss)="addDeviceOpen.set(false)"
-  >
-    <ng-template>
-      <ov-add-device
-        [isOpen]="addDeviceOpen()"
-        (dismissed)="addDeviceOpen.set(false)"
-        (paired)="addDeviceOpen.set(false)"
-      />
-    </ng-template>
-  </ion-modal>
-
-  <ion-modal
-    class="device-modal"
-    [isOpen]="sendTarget() !== null"
-    (didDismiss)="closeSend()"
-  >
-    <ng-template>
-      <ov-send-book
-        [device]="sendTarget()"
-        (dismissed)="closeSend()"
-      />
     </ng-template>
   </ion-modal>
 </ion-content>
