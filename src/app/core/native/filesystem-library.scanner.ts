@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 
 import type { FsFolder, LibraryScannerPort, LibraryTree } from './library-scanner.port';
 import { FILE_SYSTEM_BROWSER } from './file-system-browser.port';
-import { LibraryRootService } from '../services/library-root.service';
+import { LibrarySeriesService } from '../services/library-series.service';
 
 const MAX_DEPTH = 6;
 
@@ -12,64 +12,43 @@ const MAX_DEPTH = 6;
  *  originals. */
 const HIDDEN_DIRS = new Set(['.enhanced']);
 
-/** Last path segment of an absolute path (handles `/` and `\`). */
-function basename(path: string): string {
-  const norm = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  const idx = norm.lastIndexOf('/');
-  return idx < 0 ? norm : norm.slice(idx + 1) || norm;
-}
-
-/** Human-readable name for a root path. SAF content URIs carry the document id
- *  URL-encoded (`…/tree/primary%3AComics`); decode it and strip the storage
- *  volume prefix (`primary:`) so the breadcrumb reads "Comics". */
-function displayName(path: string): string {
-  if (path.startsWith('content://')) {
-    const idx = path.lastIndexOf('/');
-    const raw = idx < 0 ? path : path.slice(idx + 1);
-    let decoded = raw;
-    try {
-      decoded = decodeURIComponent(raw);
-    } catch {
-      // not valid percent-encoding — keep raw
-    }
-    const colon = decoded.indexOf(':');
-    return colon > 0 ? decoded.slice(colon + 1) : decoded;
-  }
-  return basename(path);
-}
-
 /**
- * Desktop scanner: reads the user's chosen library root from disk and builds the
- * same `FsFolder` tree the shelf already navigates.
+ * Builds the shelf from the folders the user added.
  *
- * Convention (from the plan): a folder that directly contains images is a
- * **book** (openable). A folder that contains subfolders is a **series** — it is
- * navigable, and its subfolders are the books. We descend one level to reach
- * books; deeper nesting is not flattened. Archives are ignored for now.
+ * Each added folder is one series. A folder that directly contains images is a
+ * **book** (openable). A folder that contains subfolders is navigable, and its
+ * subfolders are the books. The library itself is not a path on disk.
+ * Archives are ignored for now.
  */
 @Injectable({ providedIn: 'root' })
 export class FileSystemLibraryScanner implements LibraryScannerPort {
   private readonly fs = inject(FILE_SYSTEM_BROWSER);
-  private readonly rootSvc = inject(LibraryRootService);
+  private readonly seriesSvc = inject(LibrarySeriesService);
 
   async discover(): Promise<LibraryTree> {
-    let root = this.rootSvc.root();
-    // Desktop: the picked folder survives a reload (the handle is persisted),
-    // so restore it instead of asking for the folder again.
-    if (!root && this.fs.restoreRoot) {
-      root = await this.fs.restoreRoot();
-      if (root) this.rootSvc.setRoot(root);
+    if (this.fs.importLegacyRoot) {
+      const legacy = await this.fs.importLegacyRoot();
+      if (legacy) {
+        this.seriesSvc.add(legacy);
+        this.seriesSvc.clearLegacyPath();
+      }
     }
-    if (!root) {
-      return { root: { id: 'root', name: 'Library', isBook: false, children: [] } };
+
+    const children: FsFolder[] = [];
+    for (const series of this.seriesSvc.series()) {
+      try {
+        children.push(await this.buildNode(series.path, series.name, 0));
+      } catch (err) {
+        console.error('[fs-scanner] discover() FAILED walking series:', series.path, err);
+        children.push({
+          id: `fs:${series.path}`,
+          name: series.name,
+          isBook: false,
+          children: [],
+        });
+      }
     }
-    try {
-      const tree = await this.buildNode(root, displayName(root), 0);
-      return { root: tree };
-    } catch (err) {
-      console.error('[fs-scanner] discover() FAILED walking root:', root, err);
-      return { root: { id: 'root', name: 'Library', isBook: false, children: [] } };
-    }
+    return { root: { id: 'root', name: 'Library', isBook: false, children } };
   }
 
   private async buildNode(path: string, name: string, depth: number): Promise<FsFolder> {

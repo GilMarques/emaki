@@ -6,7 +6,6 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonImg,
   IonLabel,
   IonModal,
   IonSearchbar,
@@ -21,13 +20,14 @@ import {
 
 import { DisplaySettingsComponent } from '../viewer/display-settings.component';
 import { FiltersSettingsComponent } from '../viewer/filters-settings.component';
+import { CoverComponent } from '../../shared/cover.component';
 import { MenuButtonComponent } from '../../shared/menu-button.component';
 import type { FsFolder } from '../../core/native/library-scanner.port';
 import type { Book } from '../../core/models/book.model';
 import { FILE_SYSTEM_BROWSER, type FileSystemBrowser } from '../../core/native/file-system-browser.port';
 import { BookstoreService } from '../../core/services/bookstore.service';
 import { FilePageService } from '../../core/services/file-page.service';
-import { LibraryRootService } from '../../core/services/library-root.service';
+import { LibrarySeriesService } from '../../core/services/library-series.service';
 import { ScannerService } from '../../core/services/scanner.service';
 import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { ShelfService } from '../../core/services/shelf.service';
@@ -55,7 +55,6 @@ const DERIVATIVE_SIZE_RATIO = 2;
     IonContent,
     IonHeader,
     IonIcon,
-    IonImg,
     IonLabel,
       IonModal,
     IonSearchbar,
@@ -66,6 +65,7 @@ const DERIVATIVE_SIZE_RATIO = 2;
     IonTitle,
     IonToast,
     IonToolbar,
+    CoverComponent,
     DisplaySettingsComponent,
     FiltersSettingsComponent,
     MenuButtonComponent,
@@ -78,7 +78,7 @@ export class BookshelfPage {
   private readonly bookshelf = inject(BookstoreService);
   private readonly shelf = inject(ShelfService);
   private readonly fs = inject<FileSystemBrowser>(FILE_SYSTEM_BROWSER);
-  private readonly root = inject(LibraryRootService);
+  private readonly series = inject(LibrarySeriesService);
   private readonly filePages = inject(FilePageService);
   private readonly enhance = inject(ScanEnhancementService);
   private readonly remote = inject(RemoteShelfService);
@@ -119,6 +119,11 @@ export class BookshelfPage {
 
   /** The folder-pick entry point only appears when a fs backend is present. */
   public readonly showFiles = computed(() => this.fs.isAvailable());
+
+  /** A series tile at the library root can be taken off the shelf. */
+  public canRemove(folder: FsFolder): boolean {
+    return !this.canGoUp() && folder.id.startsWith('fs:');
+  }
 
   public readonly tree = this.scanner.tree;
   public readonly scanning = this.scanner.scanning;
@@ -278,10 +283,17 @@ export class BookshelfPage {
   });
 
   constructor() {
-    // Populate the tree immediately so the explorer shows structure without a scan.
-    void this.scanner.discover();
+    void this.restoreLibrary();
     // One page, one shelf: the MEGA books load alongside the local tree.
     if (this.signedIn()) void this.remote.refresh();
+  }
+
+  /** Show the added series, and register their books when there are any. */
+  private async restoreLibrary(): Promise<void> {
+    await this.scanner.discover();
+    if (this.series.series().length === 0) return;
+    await this.scanner.scan();
+    this.preloadCovers();
   }
 
   /** Cover art URL for a tile, resolved for real-disk books. */
@@ -382,10 +394,10 @@ export class BookshelfPage {
     this.currentPath.update((p) => p.slice(0, -1));
   }
 
-  /** Scan the library. With a fs backend and no root yet, pick a folder first. */
+  /** Rescan every added series. With nothing added yet, pick the first folder. */
   public async scan(): Promise<void> {
-    if (this.fs.isAvailable() && this.root.root() === null) {
-      await this.openFolder();
+    if (this.fs.isAvailable() && this.series.series().length === 0) {
+      await this.addSeries();
       return;
     }
     await this.scanner.scan();
@@ -394,13 +406,13 @@ export class BookshelfPage {
     if (this.signedIn()) await this.remote.refresh();
   }
 
-  /** Pick a folder on disk; it becomes the library root and is scanned. */
-  public async openFolder(): Promise<void> {
+  /** Pick a folder and add it as a series. */
+  public async addSeries(): Promise<void> {
     try {
-      const dir = await this.fs.pickDirectory();
+      const picked = await this.fs.pickDirectory();
       // Cancelling the picker is a normal outcome, not something to report.
-      if (dir === null) return;
-      this.root.setRoot(dir);
+      if (picked === null) return;
+      this.series.add(picked);
       await this.scanner.discover();
       await this.scanner.scan();
       this.preloadCovers();
@@ -408,6 +420,16 @@ export class BookshelfPage {
     } catch (caught) {
       this.toastMessage.set(caught instanceof Error ? caught.message : String(caught));
     }
+  }
+
+  /** Take a series off the shelf. The folder on disk is left untouched. */
+  public async removeSeries(folder: FsFolder): Promise<void> {
+    if (!folder.id.startsWith('fs:')) return;
+    for (const book of this.collectBooks(folder)) this.shelf.remove(book.id);
+    this.series.remove(folder.id.slice('fs:'.length));
+    await this.scanner.discover();
+    await this.scanner.scan();
+    this.preloadCovers();
   }
 
   /** Warm the blob cache for every fs book's cover so tiles render with real

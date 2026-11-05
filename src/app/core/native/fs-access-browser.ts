@@ -4,16 +4,17 @@
  * Chrome/Edge expose `showDirectoryPicker()`, which hands out a
  * `FileSystemDirectoryHandle` — a live, permission-backed view of a real folder.
  * There are no absolute paths in that world, so this backend keeps the port's
- * path-shaped API by minting synthetic paths (`/<root>/<sub>/<file>`) and
- * resolving them back to handles by walking the tree from the root handle.
+ * path-shaped API by minting synthetic paths (`/<series id>/<sub>/<file>`) and
+ * resolving them back to handles by walking from that series' handle.
  *
- * The root handle is persisted in IndexedDB (handles are structured-cloneable),
- * so the library survives a reload without asking for the folder again.
+ * Each series handle is persisted in IndexedDB (handles are structured-cloneable),
+ * so added folders survive a reload without asking again.
  */
 import type {
   ArchiveInfo,
   FileSystemBrowser,
   FsEntry,
+  PickedDirectory,
 } from './file-system-browser.port';
 
 const ARCHIVE_EXT = /\.(cbz|cbr|cb7|cbt|cba|zip|rar|7z)$/i;
@@ -38,16 +39,19 @@ interface FsDirectoryHandle {
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FsDirectoryHandle>;
   queryPermission?(descriptor?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
   requestPermission?(descriptor?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
+  isSameEntry?(other: FsDirectoryHandle): Promise<boolean>;
 }
 
 type PickerWindow = Window & {
   showDirectoryPicker?(options?: { mode?: 'read' | 'readwrite' }): Promise<FsDirectoryHandle>;
 };
 
-/** Where the root handle is parked between sessions. */
+/** Where series handles are parked between sessions. */
 const HANDLE_DB = 'emaki-fs-access';
 const HANDLE_STORE = 'handles';
-const HANDLE_KEY = 'library-root';
+/** The single folder remembered before the library became a list of series. */
+const LEGACY_HANDLE_KEY = 'library-root';
+const SERIES_HANDLE_PREFIX = 'series:';
 
 /**
  * How long a real dismissal takes, at minimum.
@@ -99,6 +103,34 @@ async function idbSet(key: string, value: unknown): Promise<void> {
   }
 }
 
+async function idbDelete(key: string): Promise<void> {
+  try {
+    const db = await openHandleDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, 'readwrite');
+      tx.objectStore(HANDLE_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function idbKeys(): Promise<readonly string[]> {
+  try {
+    const db = await openHandleDb();
+    return await new Promise<readonly string[]>((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, 'readonly');
+      const req = tx.objectStore(HANDLE_STORE).getAllKeys();
+      req.onsuccess = () => resolve(req.result.map((key) => String(key)));
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return [];
+  }
+}
+
 function kindFor(name: string): FsEntry['kind'] {
   if (IMAGE_EXT.test(name)) return 'image';
   if (ARCHIVE_EXT.test(name)) return 'archive';
@@ -113,14 +145,15 @@ function kindFor(name: string): FsEntry['kind'] {
 export class FileSystemAccessBrowser implements FileSystemBrowser {
   readonly id = 'fs-access';
 
-  private rootHandle: FsDirectoryHandle | null = null;
+  /** Series id → the folder handle the user granted. */
+  private readonly roots = new Map<string, FsDirectoryHandle>();
 
   isAvailable(): boolean {
     return typeof (window as PickerWindow).showDirectoryPicker === 'function';
   }
 
-  /** Ask the user for a folder and remember it (handle in IndexedDB). */
-  async pickDirectory(): Promise<string | null> {
+  /** Ask the user for a series folder and remember its handle. */
+  async pickDirectory(): Promise<PickedDirectory | null> {
     const picker = (window as PickerWindow).showDirectoryPicker;
     if (!picker) return null;
     // A cross-origin frame cannot open the picker at all, and some of them
@@ -143,47 +176,86 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
       }
       throw pickerFailure(error);
     }
-    this.rootHandle = handle;
-    await idbSet(HANDLE_KEY, handle);
-    return `/${handle.name}`;
-  }
 
-  /** Re-attach to the folder picked in a previous session, if any. */
-  async restoreRoot(): Promise<string | null> {
-    if (this.rootHandle) return `/${this.rootHandle.name}`;
-    const handle = await idbGet<FsDirectoryHandle>(HANDLE_KEY);
-    if (!handle) return null;
-    const perm = await handle.queryPermission?.({ mode: 'readwrite' });
-    if (perm === 'denied') return null;
-    this.rootHandle = handle;
-    return `/${handle.name}`;
+    const existing = await this.matchExisting(handle);
+    if (existing !== null) return existing;
+
+    const id = crypto.randomUUID();
+    this.roots.set(id, handle);
+    await idbSet(seriesKey(id), handle);
+    return { path: `/${id}`, name: handle.name };
   }
 
   /**
-   * Resolve a synthetic path back to a handle by walking down from the root.
-   * `path` is `/<root>/<a>/<b>`; the root segment is the picked folder's name.
+   * Turn the old single library folder into one series, once.
+   * The handle moves to a series key so later picks can tell it apart.
+   */
+  async importLegacyRoot(): Promise<PickedDirectory | null> {
+    const handle = await idbGet<FsDirectoryHandle>(LEGACY_HANDLE_KEY);
+    if (!handle) return null;
+    const perm = await handle.queryPermission?.({ mode: 'readwrite' });
+    if (perm === 'denied') return null;
+    const existing = await this.matchExisting(handle);
+    await idbDelete(LEGACY_HANDLE_KEY);
+    if (existing !== null) return existing;
+    const id = crypto.randomUUID();
+    this.roots.set(id, handle);
+    await idbSet(seriesKey(id), handle);
+    return { path: `/${id}`, name: handle.name };
+  }
+
+  /** Reuse the id of a folder the user already added. */
+  private async matchExisting(handle: FsDirectoryHandle): Promise<PickedDirectory | null> {
+    for (const [id, known] of this.roots) {
+      if (await known.isSameEntry?.(handle)) return { path: `/${id}`, name: known.name };
+    }
+    for (const key of await idbKeys()) {
+      if (!key.startsWith(SERIES_HANDLE_PREFIX)) continue;
+      const stored = await idbGet<FsDirectoryHandle>(key);
+      if (!stored || !(await stored.isSameEntry?.(handle))) continue;
+      const id = key.slice(SERIES_HANDLE_PREFIX.length);
+      this.roots.set(id, stored);
+      return { path: `/${id}`, name: stored.name };
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a synthetic path back to a handle by walking down from its series.
+   * `path` is `/<series id>/<a>/<b>`.
    */
   private async resolve(path: string): Promise<FsFileHandle | FsDirectoryHandle | null> {
-    if (!this.rootHandle) {
-      const restored = await this.restoreRoot();
-      if (!restored) return null;
-    }
-    const root = this.rootHandle;
-    if (!root) return null;
     const segments = path.split('/').filter((s) => s.length > 0);
     if (segments.length === 0) return null;
-    if (segments[0] !== root.name) return null;
+    const root = await this.rootHandleFor(segments[0]);
+    if (!root) return null;
 
     let current: FsFileHandle | FsDirectoryHandle = root;
     for (const segment of segments.slice(1)) {
       if (current.kind !== 'directory') return null;
+      const directory: FsDirectoryHandle = current;
       try {
-        current = await current.getFileHandle(segment);
+        current = await directory.getDirectoryHandle(segment);
       } catch {
-        return null;
+        try {
+          current = await directory.getFileHandle(segment);
+        } catch {
+          return null;
+        }
       }
     }
     return current;
+  }
+
+  private async rootHandleFor(id: string): Promise<FsDirectoryHandle | null> {
+    const cached = this.roots.get(id);
+    if (cached) return cached;
+    const stored = await idbGet<FsDirectoryHandle>(seriesKey(id));
+    if (!stored) return null;
+    const perm = await stored.queryPermission?.({ mode: 'readwrite' });
+    if (perm === 'denied') return null;
+    this.roots.set(id, stored);
+    return stored;
   }
 
   async listDirectory(path: string): Promise<readonly FsEntry[]> {
@@ -245,18 +317,11 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
     }
   }
 
-  /** Walk down from the root, creating each folder on the way. */
+  /** Walk down from the series folder, creating each folder on the way. */
   private async resolveDirectory(segments: readonly string[]): Promise<FsDirectoryHandle> {
-    if (!this.rootHandle) {
-      const restored = await this.restoreRoot();
-      if (!restored) throw new Error('No library folder is open');
-    }
-    const root = this.rootHandle;
-    if (!root) throw new Error('No library folder is open');
-    if (segments.length === 0) return root;
-    if (segments[0] !== root.name) {
-      throw new Error('Path is outside the library root');
-    }
+    if (segments.length === 0) throw new Error('No series folder is open');
+    const root = await this.rootHandleFor(segments[0]);
+    if (!root) throw new Error('No series folder is open');
 
     let current = root;
     for (const segment of segments.slice(1)) {
@@ -264,6 +329,10 @@ export class FileSystemAccessBrowser implements FileSystemBrowser {
     }
     return current;
   }
+}
+
+function seriesKey(id: string): string {
+  return `${SERIES_HANDLE_PREFIX}${id}`;
 }
 
 /**
@@ -293,7 +362,7 @@ function isEmbedded(): boolean {
 function pickerFailure(error: unknown): Error {
   if (error instanceof DOMException && error.name === 'SecurityError') {
     return new Error(
-      'This window is not allowed to open a folder picker. Open Emaki in a Chrome or Edge tab to choose a library folder.',
+      'This window is not allowed to open a folder picker. Open Emaki in a Chrome or Edge tab to choose a series folder.',
     );
   }
   return error instanceof Error ? error : new Error(String(error));

@@ -13,13 +13,13 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonImg,
   IonTitle,
   IonToast,
   IonToolbar,
 } from '@ionic/angular/standalone';
 
 import type { HistoryEntry } from '../../core/models/history.model';
+import { CoverComponent } from '../../shared/cover.component';
 import { MenuButtonComponent } from '../../shared/menu-button.component';
 import { BookstoreService } from '../../core/services/bookstore.service';
 import { FilePageService } from '../../core/services/file-page.service';
@@ -54,10 +54,10 @@ interface HistoryGroup {
     IonContent,
     IonHeader,
     IonIcon,
-    IonImg,
-      IonTitle,
+    IonTitle,
     IonToast,
     IonToolbar,
+    CoverComponent,
     MenuButtonComponent,
   ],
   templateUrl: './history.page.html',

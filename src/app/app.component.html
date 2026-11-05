@@ -62,7 +62,6 @@
 
         @if (backgroundTasks().length > 0) {
           <div class="menu-section">
-            <div class="menu-section-title">Tasks</div>
             <ion-list lines="none" class="menu-tasks">
               @for (task of backgroundTasks(); track task.kind + ':' + task.id) {
                 <ion-item class="task-item">

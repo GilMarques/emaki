@@ -13,7 +13,7 @@ class FakeFsBrowser {
   isAvailable(): boolean {
     return false;
   }
-  async pickDirectory(): Promise<string | null> {
+  async pickDirectory(): Promise<{ path: string; name: string } | null> {
     return null;
   }
   async listDirectory(): Promise<unknown[]> {

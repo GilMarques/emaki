@@ -39,9 +39,15 @@ import { join } from 'node:path';
 
 const DEFAULT_PORT = 4300;
 
-/** Browser-ish UA: providers block obvious bots more often than browsers. */
+/** Browser-ish UA: scrapers block obvious bots more often than browsers. */
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+/**
+ * MangaDex answers a browser user-agent from a non-browser TLS stack with
+ * 403 ("Bot challenge not passed"). An application name passes.
+ */
+const MANGADEX_USER_AGENT = 'Emaki/0.1.0';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -67,6 +73,25 @@ const HOP_BY_HOP = new Set([
   'cookie',
   'content-length',
 ]);
+
+/** Browser client hints. Forwarding them from curl makes the request look like a fake browser. */
+function isBrowserHint(name) {
+  const lower = name.toLowerCase();
+  return lower.startsWith('sec-fetch-') || lower.startsWith('sec-ch-');
+}
+
+/** MangaDex (API, covers, at-home nodes) must not be called with a browser user-agent. */
+function userAgentFor(url) {
+  try {
+    const host = new URL(url).hostname;
+    if (host === 'mangadex.org' || host.endsWith('.mangadex.org') || host.endsWith('.mangadex.network')) {
+      return MANGADEX_USER_AGENT;
+    }
+  } catch {
+    // Keep the default when the target is not a URL yet.
+  }
+  return DEFAULT_USER_AGENT;
+}
 
 /** Is a usable `curl` on the PATH? */
 function hasCurl() {
@@ -264,13 +289,12 @@ const server = createServer((req, res) => {
 
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
-    if (!HOP_BY_HOP.has(name.toLowerCase()) && typeof value === 'string') {
-      headers[name] = value;
-    }
+    if (HOP_BY_HOP.has(name.toLowerCase()) || isBrowserHint(name) || typeof value !== 'string') continue;
+    headers[name] = value;
   }
   // The browser forbids setting `user-agent` from script, so the proxy
-  // supplies the one providers expect to see.
-  headers['user-agent'] = DEFAULT_USER_AGENT;
+  // supplies one. MangaDex rejects a browser name from this process.
+  headers['user-agent'] = userAgentFor(target);
   // `x-referer` is the only referer a browser can still set (the real one
   // is a forbidden header name); the transport maps it back to `Referer`.
   const referer = headers['x-referer'];

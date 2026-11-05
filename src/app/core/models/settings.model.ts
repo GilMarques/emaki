@@ -61,35 +61,6 @@ export type PageTransition = 'none' | 'slide-horizontal' | 'slide-vertical' | 'p
  */
 export type ImageSmoothMethod = 'none' | 'nearest-neighbor';
 
-/**
- * Color behind the page in the viewer (the letterbox around the spread).
- * Stored as a CSS hex string; presets live in VIEWER_BACKGROUND_PRESETS and
- * any other hex (from the custom picker) is accepted.
- */
-export type ViewerBackground = string;
-
-export interface ViewerBackgroundPreset {
-  readonly value: ViewerBackground;
-  readonly label: string;
-}
-
-/** Swatches offered in Preferences and the reader's Quick Actions. */
-export const VIEWER_BACKGROUND_PRESETS: readonly ViewerBackgroundPreset[] = [
-  { value: '#000000', label: 'Black' },
-  { value: '#1c1c1e', label: 'Charcoal' },
-  { value: '#555555', label: 'Grey' },
-  { value: '#a0a0a0', label: 'Light grey' },
-  { value: '#f4ecd8', label: 'Paper' },
-  { value: '#ffffff', label: 'White' },
-];
-
-const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-
-/** True for `#rgb` / `#rrggbb` strings — the only colors we persist. */
-export function isHexColor(value: unknown): value is string {
-  return typeof value === 'string' && HEX_COLOR.test(value);
-}
-
 /** A numeric setting + an enabled flag. Used for all slider Filters. */
 export interface FilterSlider {
   readonly enabled: boolean;
@@ -116,8 +87,6 @@ export interface DisplaySettings {
   readonly viewerMode: ViewerMode;
   readonly pageTransition: PageTransition;
   readonly zoom: ZoomMode;
-  /** Color behind the page in the viewer. Default grey (#555555). */
-  readonly viewerBackground: ViewerBackground;
   /** Magnifier loupe zoom factor. 1 = no magnification. Default 2.5.
    *  Edited from the Preferences page; the viewer reads it live. */
   readonly magnifierZoom: number;
@@ -148,9 +117,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pageLayout: 'default',
     interfaceTheme: 'light',
     viewerMode: 'paged',
-    pageTransition: 'none',
+    pageTransition: 'page-curl',
     zoom: 'fit-screen',
-    viewerBackground: '#555555',
     magnifierZoom: 2.5,
     keepAwake: false,
   },

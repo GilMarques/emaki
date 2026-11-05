@@ -10,7 +10,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { IonButton, IonContent, IonIcon, IonImg } from '@ionic/angular/standalone';
+import { IonButton, IonContent, IonIcon } from '@ionic/angular/standalone';
 
 import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
 import type { Page } from '../../core/models/book.model';
@@ -23,6 +23,7 @@ import { MagnifierStateService } from '../../core/services/magnifier-state.servi
 import { ShelfService } from '../../core/services/shelf.service';
 import { ScanEnhancementService } from '../../core/services/scan-enhancement.service';
 import { SettingsService } from '../../core/services/settings.service';
+import { CoverComponent } from '../../shared/cover.component';
 import { BookSpreadComponent } from './book-spread.component';
 import { MagnifierComponent } from './magnifier.component';
 
@@ -51,7 +52,7 @@ interface PanExtents {
   selector: 'ov-viewer',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonContent, IonImg, IonButton, IonIcon, BookSpreadComponent, MagnifierComponent],
+  imports: [IonContent, IonButton, IonIcon, BookSpreadComponent, MagnifierComponent, CoverComponent],
   templateUrl: './viewer.page.html',
   styleUrls: ['./viewer.page.scss'],
   host: {
@@ -91,10 +92,8 @@ export class ViewerPage {
   /** Page curl is the only effect that hands the gesture to page-flip. */
   private readonly usesCurl = computed(() => this.pageTransition() === 'page-curl');
 
-  /** Color behind the page (letterbox around the spread). */
-  public readonly viewerBackground = computed(
-    () => this.settings.settings().display.viewerBackground,
-  );
+  /** Letterbox around the page, sampled from the page margin. */
+  public readonly viewerBackground = this.flip.surroundColor;
 
   /** Progress string for the future bottom-sheet. */
   public readonly progress = computed(() => {

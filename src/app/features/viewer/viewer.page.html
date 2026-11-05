@@ -21,7 +21,7 @@
           [style.height.px]="previewRect()?.height ?? 0"
           [style.transform]="previewTransform()"
         >
-          <ion-img [src]="url" alt=""></ion-img>
+          <ov-cover [src]="url" alt="" icon="book-outline" />
         </div>
       }
       <div
@@ -98,7 +98,7 @@
             (click)="goToPage(i)"
             [attr.aria-label]="'Page ' + (i + 1)"
           >
-            <ion-img class="thumb-img" [src]="page.url" [alt]="'Page ' + (i + 1)"></ion-img>
+            <ov-cover class="thumb-img" [src]="page.url" [alt]="'Page ' + (i + 1)" icon="image-outline" />
             <span class="thumb-num">{{ i + 1 }}</span>
           </button>
         }

@@ -6,8 +6,8 @@
 
 
 ion-content {
-  /* Fallback only — the viewer binds this to the saved background color. */
-  --background: #111;
+  /* Fallback until the open page's margin color is sampled. */
+  --background: #555;
   /* Edge-to-edge: the viewer paints its own letterbox, so a safe-area
      padding here carved a black strip out of it below the gesture bar.
      The page-flip canvas now runs under the system bars instead. */
@@ -32,9 +32,11 @@ ion-content::part(scroll) {
   min-width: 0;
   overflow: hidden;
   touch-action: none;
-  /* Grey surround visible when zoomed out / panned past the page.
-     Fallback only — the saved Viewer background color overrides it. */
+  /* Letterbox. The page canvas is transparent outside the page, so this
+     color — sampled from the page margin — fills the unused renderer space.
+     The transition covers a page turn without a hard flash. */
   background: #555;
+  transition: background-color 180ms ease;
 }
 
 ov-book-spread {
@@ -72,10 +74,10 @@ ov-book-spread {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   will-change: transform;
 
-  ion-img {
+  ov-cover {
+    display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
   }
 }
 

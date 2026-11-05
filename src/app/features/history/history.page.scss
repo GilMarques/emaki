@@ -83,21 +83,6 @@ ion-toolbar.history-bar {
   background: var(--ion-color-step-100, #ddd);
 }
 
-ion-img.cover::part(image) {
-  object-fit: cover;
-}
-
-.empty-art {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ion-color-medium, #92949c);
-
-  ion-icon {
-    font-size: 22px;
-  }
-}
-
 .body {
   flex: 1 1 auto;
   min-width: 0;
@@ -202,20 +187,19 @@ ion-img.cover::part(image) {
   text-align: center;
   color: var(--ion-color-medium, #92949c);
 
-  ion-icon {
-    font-size: 40px;
-    margin-bottom: 10px;
+  .placeholder-art {
+    display: block;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 8px;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
   }
 
   h2 {
-    margin: 0 0 6px;
+    margin: 0;
     color: var(--ion-text-color);
     font-weight: 600;
-  }
-
-  p {
-    margin: 0;
-    font-size: 0.9rem;
-    line-height: 1.4;
   }
 }

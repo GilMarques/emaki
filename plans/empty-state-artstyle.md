@@ -69,9 +69,10 @@ Attach the latest approved empty-state PNG as a visual reference.
 | Situation            | File                                         | Status                          |
 | -------------------- | -------------------------------------------- | ------------------------------- |
 | No devices connected | `src/assets/illustrations/no-devices.png`    | Approved (sketch, no decals)    |
+| Empty folder         | `src/assets/illustrations/empty-folder.png`  | Sketch, open blank folder       |
+| No history           | `src/assets/illustrations/no-history.png`    | Sketch, closed blank book       |
 | No library / books   | —                                            | Not started                     |
 | No search results    | —                                            | Not started                     |
-| No history           | —                                            | Not started                     |
 | No internet          | —                                            | Not started                     |
 | No notifications     | —                                            | Not started                     |
 
@@ -83,6 +84,8 @@ consumer: Sync page when `devices().length === 0`
 
 ## Changelog
 
+- **2026-11-05** — No history: closed blank book with a bookmark ribbon.
+- **2026-11-05** — Empty folder: open blank folder, same monotone sketch as no-devices.
 - **2026-11-03** — Soft 3D clay rejected. Switched to Evernote-like hand-drawn
   monotone. Single phone for no-devices; removed all hardware decals. Raster PNG
   for iteration; SVG deferred until style is final.

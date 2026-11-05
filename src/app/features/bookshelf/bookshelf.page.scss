@@ -131,23 +131,6 @@ ion-toolbar.search-bar {
   object-fit: cover;
 }
 
-ion-img.cover::part(image) {
-  object-fit: cover;
-}
-
-.empty-art {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: var(--ion-color-medium, #92949c);
-  background: var(--ion-color-step-100, #ddd);
-
-  ion-icon {
-    font-size: 34px;
-  }
-}
 
 /* Dark fade behind the caption so the white text stays readable on any art. */
 .shade {
@@ -200,6 +183,28 @@ ion-img.cover::part(image) {
 
 /* Sparkles action over the artwork. Dimmed until the book is enhanced, and
    swaps to a spinner while that book's enhancement is running. */
+.remove-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.42);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+
+  ion-icon {
+    font-size: 16px;
+  }
+}
+
 .enhance-btn {
   position: absolute;
   top: 6px;
@@ -271,16 +276,31 @@ ion-img.cover::part(image) {
   margin: 0 auto;
   padding: 48px 24px;
   text-align: center;
-  opacity: 0.7;
 
   h2 {
     margin: 0 0 8px;
     font-weight: 600;
+    opacity: 0.7;
   }
 
   p {
     margin: 0;
+    opacity: 0.7;
   }
+
+  ion-button {
+    margin-top: 16px;
+  }
+}
+
+.placeholder-art {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 8px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* The MEGA shelf joins the grid under its own heading. */

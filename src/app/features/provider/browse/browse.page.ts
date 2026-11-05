@@ -14,7 +14,6 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonImg,
   IonItem,
   IonLabel,
   IonList,
@@ -32,6 +31,7 @@ import {
 
 import type { Manga } from '../../../core/connectors/connector.model';
 import { ProviderBrowseService } from '../../../core/connectors/provider-browse.service';
+import { CoverComponent } from '../../../shared/cover.component';
 
 /**
  * Browse a provider's catalogue: searchbar + results list.
@@ -51,7 +51,6 @@ import { ProviderBrowseService } from '../../../core/connectors/provider-browse.
     IonContent,
     IonHeader,
     IonIcon,
-    IonImg,
     IonItem,
     IonLabel,
     IonList,
@@ -64,6 +63,7 @@ import { ProviderBrowseService } from '../../../core/connectors/provider-browse.
     IonTitle,
     IonToast,
     IonToolbar,
+    CoverComponent,
   ],
   templateUrl: './browse.page.html',
   styleUrls: ['./browse.page.scss'],

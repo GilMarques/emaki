@@ -44,6 +44,18 @@ export class ConnectorRequestService {
    */
   private readonly webReadable = new Map<string, boolean>();
 
+  /**
+   * URL safe to assign to an `<img>`.
+   *
+   * MangaDex answers a browser's own cover request with 403. On the web those
+   * images go through the provider proxy, which calls MangaDex as the app.
+   * Every other URL is left alone.
+   */
+  public imageSrc(url: string): string {
+    if (this.native || !this.proxyBase || !isMangaDexHost(url)) return url;
+    return this.proxyUrl(url);
+  }
+
   /** Fetch a URL as a UTF-8 string. */
   public async fetchText(url: string, headers: Record<string, string> = {}): Promise<string> {
     const { status, data } = await this.raw<string>(url, 'text', headers);
@@ -263,5 +275,15 @@ export class ConnectorRequestService {
       return 'image/bmp';
     }
     return 'application/octet-stream';
+  }
+}
+
+/** MangaDex image hosts reject a direct browser request. */
+function isMangaDexHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'mangadex.org' || host.endsWith('.mangadex.org') || host.endsWith('.mangadex.network');
+  } catch {
+    return false;
   }
 }

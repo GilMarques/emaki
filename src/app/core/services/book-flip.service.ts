@@ -6,6 +6,7 @@ import type { Book, Page } from '../models/book.model';
 import type { PageTransition, ZoomMode } from '../models/settings.model';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
+import { SURROUND_FALLBACK, blendEdgeColors, sampleEdgeColor } from './page-edge-color';
 import { ScanEnhancementService } from './scan-enhancement.service';
 
 type NaturalSize = { readonly width: number; readonly height: number };
@@ -57,6 +58,14 @@ export class BookFlipService {
   private logicalIndexByRenderedIndex: readonly number[] = [];
   /** URLs last handed to page-flip, so we can skip redundant reloads. */
   private loadedUrls: string[] = [];
+  /** Display URL of each logical page. Edge colors are cached against these. */
+  private logicalUrls: readonly string[] = [];
+  /** Margin color per display URL. Null means the bitmap could not be read. */
+  private readonly edgeColors = new Map<string, string | null>();
+
+  /** Letterbox color, taken from the margin of the page on screen. */
+  private readonly _surroundColor = signal(SURROUND_FALLBACK);
+  public readonly surroundColor = this._surroundColor.asReadonly();
 
   /** Latest page-flip state from the lib's `changeState` event. */
   private readonly _flipState = signal<FlipGestureState | null>(null);
@@ -96,6 +105,7 @@ export class BookFlipService {
     transition: PageTransition = 'page-curl',
   ): void {
     const sameBook = this.mountedBookId === book.id;
+    if (!sameBook) this.edgeColors.clear();
     const state = this.bookstore.state();
     const baseIndex = sameBook ? this._currentIndex() : state.book === null ? 0 : state.currentIndex;
     const pageIndex = Math.max(0, Math.min(baseIndex, book.pages.length - 1));
@@ -137,6 +147,7 @@ export class BookFlipService {
   ): void {
     this.unmount();
     this.host = host;
+    this.logicalUrls = pageUrls;
     const interactiveCurl = transition === 'page-curl';
     this.resetHost(host);
 
@@ -288,6 +299,7 @@ export class BookFlipService {
 
     const index = this._currentIndex();
     this.loadedUrls = urls;
+    this.logicalUrls = urls;
     // `loadFromImages` rebuilds the widget's UI: it inserts another wrapper +
     // canvas into the block, and the old canvas stays on top, so the swapped
     // pages render underneath the stale ones (the enhanced/original toggle
@@ -295,6 +307,7 @@ export class BookFlipService {
     // collection in place and repaints the same canvas.
     this.instance.updateFromImages([...urls]);
     this.instance.turnToPage(index);
+    this.ensureSurround(this.instance.getCurrentPageIndex());
   }
 
 
@@ -526,6 +539,7 @@ export class BookFlipService {
     const out: LoadedImage[] = [];
     for (const url of urls) {
       const loaded = await this.loadImageNaturalSize(url);
+      this.rememberEdge(url, loaded);
       const keep =
         layout === 'double' &&
         loaded.image !== null &&
@@ -560,6 +574,76 @@ export class BookFlipService {
     const logicalIndex = this.logicalIndexByRenderedIndex[index] ?? index;
     this._currentIndex.set(logicalIndex);
     this.bookstore.goTo(logicalIndex);
+    this.ensureSurround(index);
+  }
+
+  /** Logical pages of the spread that contains `renderedIndex`. */
+  private spreadLogicalIndices(renderedIndex: number): readonly number[] {
+    const collection = this.instance?.getPageCollection();
+    const spreadIndex = collection?.getSpreadIndexByPage(renderedIndex) ?? null;
+    const spread = spreadIndex === null ? undefined : collection?.getSpread()[spreadIndex];
+    if (spread === undefined) {
+      return [this.logicalIndexByRenderedIndex[renderedIndex] ?? renderedIndex];
+    }
+    return [...new Set(spread.map((index) => this.logicalIndexByRenderedIndex[index] ?? index))];
+  }
+
+  /**
+   * Paint the letterbox from the margins of the pages on screen.
+   * A page that is still loading keeps the previous color instead of flashing
+   * the fallback grey.
+   */
+  private applySurround(renderedIndex: number): void {
+    let pending = false;
+    const known: string[] = [];
+    for (const index of this.spreadLogicalIndices(renderedIndex)) {
+      const url = this.logicalUrls[index];
+      if (url === undefined || !this.edgeColors.has(url)) {
+        pending = true;
+        continue;
+      }
+      const color = this.edgeColors.get(url);
+      if (color !== undefined && color !== null) known.push(color);
+    }
+    if (known.length > 0) {
+      this._surroundColor.set(blendEdgeColors(known));
+      return;
+    }
+    if (!pending) this._surroundColor.set(SURROUND_FALLBACK);
+  }
+
+  /**
+   * Use cached margin colors, and sample any page on screen that is not
+   * cached yet (an enhanced derivative that arrived after the first probe).
+   */
+  private ensureSurround(renderedIndex: number): void {
+    const missing = this.spreadLogicalIndices(renderedIndex).flatMap((index) => {
+      const url = this.logicalUrls[index];
+      return url !== undefined && !this.edgeColors.has(url) ? [url] : [];
+    });
+    this.applySurround(renderedIndex);
+    if (missing.length === 0) return;
+
+    const generation = this.mountGeneration;
+    void Promise.all(missing.map((url) => this.sampleUrl(url))).then(() => {
+      if (generation !== this.mountGeneration || this.instance === null) return;
+      this.applySurround(this.instance.getCurrentPageIndex());
+    });
+  }
+
+  private rememberEdge(url: string, loaded: LoadedImage): void {
+    if (this.edgeColors.has(url)) return;
+    const color =
+      loaded.image === null
+        ? null
+        : sampleEdgeColor(loaded.image, loaded.natural.width, loaded.natural.height);
+    this.edgeColors.set(url, color);
+  }
+
+  private async sampleUrl(url: string): Promise<void> {
+    if (this.edgeColors.has(url)) return;
+    const loaded = await this.loadImageNaturalSize(url);
+    this.rememberEdge(url, loaded);
   }
 }
 

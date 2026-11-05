@@ -29,7 +29,7 @@ export class ScannerService {
 
   private readonly _tree = signal<FsFolder | null>(null);
   /**
-   * The visible folder tree: the discovered library root plus a synthetic
+   * The visible folder tree: the series the user added, plus a synthetic
    * "Downloads" child (when anything has been downloaded), so downloaded
    * manga show up in the shelf grouped by series.
    */
@@ -86,7 +86,7 @@ export class ScannerService {
     this._scanning.set(true);
     this._booksFound.set(0);
     try {
-      const root = this._tree() ?? (await this.scanner.discover()).root;
+      const { root } = await this.scanner.discover();
       const scanned = new Set<string>();
       const books: Book[] = [];
 

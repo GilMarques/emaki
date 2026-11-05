@@ -25,7 +25,7 @@
         <ion-icon slot="icon-only" [name]="searchOpen() ? 'close-outline' : 'search-outline'"></ion-icon>
       </ion-button>
       @if (showFiles() && !canGoUp()) {
-        <ion-button class="bar-icon" (click)="openFolder()" aria-label="Choose library folder">
+        <ion-button class="bar-icon" (click)="addSeries()" aria-label="Add series">
           <ion-icon slot="icon-only" name="folder-open-outline"></ion-icon>
         </ion-button>
       }
@@ -78,7 +78,7 @@
     <div class="placeholder">
       <h2>No library yet</h2>
       @if (showFiles()) {
-        <p>Use the folder button above to choose a folder on this computer.</p>
+        <p>Add a series by choosing its folder.</p>
       } @else {
         <p>Tap Scan to register the preset books bundled with the app.</p>
       }
@@ -88,7 +88,21 @@
       @if (query().trim().length > 0) {
         <h2>No matches</h2>
         <p>Nothing here matches “{{ query().trim() }}”.</p>
+      } @else if (!canGoUp() && showFiles()) {
+        <h2>No series yet</h2>
+        <p>Add a series by choosing its folder.</p>
+        <ion-button (click)="addSeries()">
+          <ion-icon slot="start" name="folder-open-outline"></ion-icon>
+          Add series
+        </ion-button>
       } @else {
+        <img
+          class="placeholder-art"
+          src="assets/illustrations/empty-folder.png"
+          alt=""
+          width="200"
+          height="200"
+        />
         <h2>Empty folder</h2>
         <p>This folder has no subfolders or books.</p>
       }
@@ -104,15 +118,26 @@
           (click)="onTileClick(child)"
           (keyup.enter)="onTileClick(child)"
         >
-          @if (coverUrlFor(child); as cover) {
-            <ion-img class="cover" [src]="cover" [alt]="child.name"></ion-img>
-          } @else {
-            <div class="empty-art">
-              <ion-icon [name]="child.isBook ? 'book-outline' : 'folder-outline'"></ion-icon>
-            </div>
-          }
+          <ov-cover
+            class="cover"
+            [src]="coverUrlFor(child)"
+            [alt]="child.name"
+            [icon]="child.isBook ? 'book-outline' : 'folder-outline'"
+          />
 
           <div class="shade"></div>
+
+          @if (canRemove(child)) {
+            <button
+              type="button"
+              class="remove-btn"
+              (click)="$event.stopPropagation(); removeSeries(child)"
+              (keyup.enter)="$event.stopPropagation()"
+              [attr.aria-label]="'Remove ' + child.name"
+            >
+              <ion-icon name="close"></ion-icon>
+            </button>
+          }
 
           <button
             type="button"
@@ -169,13 +194,7 @@
 
         @for (book of remoteVisible(); track book.bookId) {
           <div class="tile remote" [attr.aria-label]="book.title + ' — ' + remoteMeta(book)">
-            @if (remoteCovers().get(book.bookId); as cover) {
-              <ion-img class="cover" [src]="cover" [alt]="book.title"></ion-img>
-            } @else {
-              <div class="empty-art">
-                <ion-icon name="book-outline"></ion-icon>
-              </div>
-            }
+            <ov-cover class="cover" [src]="remoteCovers().get(book.bookId)" [alt]="book.title" />
 
             <div class="shade"></div>
 

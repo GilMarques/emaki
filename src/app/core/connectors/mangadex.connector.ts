@@ -60,6 +60,15 @@ export class MangaDexConnector extends Connector {
   public override readonly url = 'https://mangadex.org';
   public override readonly tags = ['manga', 'official', 'multi-lingual'] as const;
 
+  /**
+   * MangaDex rejects a browser user-agent from a non-browser client with 403.
+   * The web proxy applies the same name; this one is what the native client sends.
+   */
+  protected override readonly requestHeaders: Record<string, string> = {
+    accept: 'application/json,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'user-agent': 'Emaki/0.1.0',
+  };
+
   /** Languages to pull chapters for. MangaDex requires a language filter. */
   public translatedLanguages: readonly string[] = ['en'];
 

@@ -29,14 +29,20 @@ export interface ArchiveInfo {
  * used to avoid preloading bytes; otherwise the resolver reads the bytes and
  * serves blob URLs.
  */
+/** A folder the user picked. `path` is what later calls address it by. */
+export interface PickedDirectory {
+  readonly path: string;
+  readonly name: string;
+}
+
 export interface FileSystemBrowser {
   isAvailable(): boolean;
-  pickDirectory(): Promise<string | null>;
+  pickDirectory(): Promise<PickedDirectory | null>;
   /**
-   * Re-attach to a previously picked folder without prompting, when the
-   * backend can persist handles. Returns the root path or null.
+   * Adopt the single folder remembered by the previous library, if the
+   * backend still has its handle. Returns null when there is nothing to adopt.
    */
-  restoreRoot?(): Promise<string | null>;
+  importLegacyRoot?(): Promise<PickedDirectory | null>;
   listDirectory(path: string): Promise<readonly FsEntry[]>;
   readFile(path: string): Promise<Blob>;
   /** Byte size of a file at `path`, or null when it can't be stat'ed. */

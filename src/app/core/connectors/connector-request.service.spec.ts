@@ -52,6 +52,23 @@ describe('ConnectorRequestService', () => {
     expect(blob.type).toBe('image/png');
   });
 
+  it('routes MangaDex cover images through the proxy', () => {
+    const cover =
+      'https://uploads.mangadex.org/covers/4a973243-952e-44d7-a50f-883b4b7c9cc2/9adafa19-0424-4677-aab4-93a07a01a591.jpg.256.jpg';
+    expect(service.imageSrc(cover)).toBe(proxied(cover));
+    expect(service.imageSrc('https://uploads.mangadex.org/data/abc/p1.png')).toBe(
+      proxied('https://uploads.mangadex.org/data/abc/p1.png'),
+    );
+    expect(service.imageSrc('https://cmdxd98sb0x3yprd.mangadex.network/data/abc/p1.png')).toBe(
+      proxied('https://cmdxd98sb0x3yprd.mangadex.network/data/abc/p1.png'),
+    );
+  });
+
+  it('leaves non-MangaDex image URLs untouched', () => {
+    expect(service.imageSrc('https://example.org/cover.jpg')).toBe('https://example.org/cover.jpg');
+    expect(service.imageSrc('blob:http://localhost/abc')).toBe('blob:http://localhost/abc');
+  });
+
   it('falls back to octet-stream when the signature is unknown', async () => {
     fetchSpy.and.resolveTo(new Response(new Uint8Array([0x00, 0x01, 0x02]), { status: 200 }));
     const blob = await service.fetchImage('https://example.org/page.bin');

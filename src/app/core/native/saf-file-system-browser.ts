@@ -5,6 +5,7 @@ import type {
   ArchiveInfo,
   FileSystemBrowser,
   FsEntry,
+  PickedDirectory,
 } from './file-system-browser.port';
 
 /** One entry returned by the native SAF plugin. */
@@ -36,7 +37,7 @@ const ARCHIVE_EXT = /\.(cbz|cbr|cb7|cbt|cba|zip|rar|7z)$/i;
 /**
  * Android backend: SAF (Storage Access Framework) via the local
  * `@openviewer/saf-browser` plugin. Picking a folder grants a persistable read
- * (and often write) permission; the tree URI is stored as the library root and
+ * (and often write) permission. Each picked folder is one series; its tree URI
  * survives restarts.
  *
  * Directory enumeration goes through the native plugin; page bytes are read via
@@ -54,13 +55,11 @@ export class SafFileSystemBrowser implements FileSystemBrowser {
   }
 
   /** Opens the Android folder picker; returns the tree URI or null on cancel. */
-  async pickDirectory(): Promise<string | null> {
-    try {
-      const result = await SafBrowser.pickDirectory();
-      return result.uri;
-    } catch (err) {
-      throw err;
-    }
+  async pickDirectory(): Promise<PickedDirectory | null> {
+    const result = await SafBrowser.pickDirectory();
+    if (!result.uri) return null;
+    const name = result.name?.trim();
+    return { path: result.uri, name: name && name.length > 0 ? name : 'Series' };
   }
 
   async listDirectory(path: string): Promise<readonly FsEntry[]> {

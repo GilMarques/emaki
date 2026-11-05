@@ -40,13 +40,9 @@
     <ion-list lines="inset">
       @for (manga of results(); track manga.id) {
         <ion-item button (click)="onMangaClick(manga)">
-          @if (manga.coverUrl) {
-            <ion-thumbnail slot="start">
-              <ion-img [src]="manga.coverUrl" [alt]="manga.title"></ion-img>
-            </ion-thumbnail>
-          } @else {
-            <ion-icon slot="start" name="book-outline"></ion-icon>
-          }
+          <ion-thumbnail slot="start">
+            <ov-cover [src]="manga.coverUrl" [alt]="manga.title"></ov-cover>
+          </ion-thumbnail>
           <ion-label>
             <h2>{{ manga.title }}</h2>
           </ion-label>
