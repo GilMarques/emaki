@@ -45,6 +45,8 @@ export interface FlipController {
   getCalculation(): {
     getPosition(): Point;
     getDirection(): number;
+    /** 0 at the resting page, 100 when the leaf has turned over. */
+    getFlippingProgress(): number;
   } | null;
 }
 

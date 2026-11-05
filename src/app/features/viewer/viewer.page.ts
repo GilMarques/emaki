@@ -14,7 +14,7 @@ import { IonButton, IonContent, IonIcon } from '@ionic/angular/standalone';
 
 import { buildHxHChapterOneSample } from '../../core/debug/sample-books';
 import type { Page } from '../../core/models/book.model';
-import type { FilterSettings } from '../../core/models/settings.model';
+import { transitionForMode, type FilterSettings } from '../../core/models/settings.model';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { BookstoreService } from '../../core/services/bookstore.service';
 import { FilePageService } from '../../core/services/file-page.service';
@@ -25,7 +25,7 @@ import { ScanEnhancementService } from '../../core/services/scan-enhancement.ser
 import { SettingsService } from '../../core/services/settings.service';
 import { CoverComponent } from '../../shared/cover.component';
 import { BookSpreadComponent } from './book-spread.component';
-import { MagnifierComponent } from './magnifier.component';
+import { MagnifierComponent, placedPageRect } from './magnifier.component';
 
 type GestureAxis = 'horizontal' | 'vertical';
 
@@ -84,16 +84,39 @@ export class ViewerPage {
   /** Reading direction bound to the host `[dir]` attribute. */
   public readonly direction = computed<'ltr' | 'rtl'>(() => this.settings.settings().display.readingDirection);
 
-  /** Page-turn effect from Display settings. */
-  private readonly pageTransition = computed(
-    () => this.settings.settings().display.pageTransition,
+  /** Page curl in page mode, a slide in either scroll mode. */
+  private readonly pageTransition = computed(() =>
+    transitionForMode(this.settings.settings().display.viewerMode),
   );
 
   /** Page curl is the only effect that hands the gesture to page-flip. */
   private readonly usesCurl = computed(() => this.pageTransition() === 'page-curl');
 
+  /** Scroll modes slide with the finger along one axis. Page mode curls. */
+  private readonly slideAxis = computed<'horizontal' | 'vertical' | null>(() => {
+    const transition = this.pageTransition();
+    if (transition === 'slide-vertical') return 'vertical';
+    if (transition === 'slide-horizontal') return 'horizontal';
+    return null;
+  });
+
   /** Letterbox around the page, sampled from the page margin. */
   public readonly viewerBackground = this.flip.surroundColor;
+
+  /**
+   * While a page is moving, the service paints the letterbox from that
+   * motion: the curl's fold, or how far a vertical/horizontal slide has
+   * traveled. A CSS fade on top of that would finish after the page settled.
+   */
+  public readonly surroundTracksFlip = computed(() => {
+    const state = this.flip.flipState();
+    return (
+      state === 'user_fold' ||
+      state === 'fold_corner' ||
+      state === 'flipping' ||
+      this.flip.surroundLive()
+    );
+  });
 
   /** Progress string for the future bottom-sheet. */
   public readonly progress = computed(() => {
@@ -260,36 +283,15 @@ export class ViewerPage {
   });
 
   /**
-   * Viewport rect where the current page image is drawn. In dual spread
-   * each page occupies half the stage; mapping pointer → image must use
-   * this rect, not the full stage.
+   * Viewport rect where the current page image is drawn. The leaf is centered
+   * in the canvas, then the wheel zoom scales that box from the spread's
+   * top-left — the pointer maps through this rect onto the source image.
    */
   public readonly pageImageRect = computed<DOMRect | null>(() => {
     const stage = this.hostRect();
-    const eff = this.effectivePageSize();
-    if (stage === null || eff === null) return null;
-
-    const panX = this.panOffsetX();
-    const panY = this.panOffsetY();
-
-    const layout = this.settings.settings().display.pageLayout;
-    if (layout !== 'auto-dual') {
-      return new DOMRect(stage.left + panX, stage.top + panY, eff.width, eff.height);
-    }
-
-    const state = this.bookstore.state();
-    if (state.book === null) {
-      return new DOMRect(stage.left + panX, stage.top + panY, eff.width, eff.height);
-    }
-
-    const index = state.currentIndex;
-    const rtl = this.settings.settings().display.readingDirection === 'rtl';
-    const halfW = eff.width / 2;
-    const onLeft = rtl ? index % 2 === 1 : index % 2 === 0;
-
-    return onLeft
-      ? new DOMRect(stage.left + panX, stage.top + panY, halfW, eff.height)
-      : new DOMRect(stage.left + halfW + panX, stage.top + panY, halfW, eff.height);
+    const frame = this.flip.pageFrame();
+    if (stage === null || frame === null) return null;
+    return placedPageRect(stage, this.panOffsetX(), this.panOffsetY(), frame, this.bookstore.zoom());
   });
 
   /** Viewport size. */
@@ -591,8 +593,6 @@ export class ViewerPage {
   private static readonly BOOK_TRANSITION_MS = 300;
   /** Fraction of the viewport a boundary swipe must cover to commit. */
   private static readonly BOOK_SWIPE_RATIO = 0.25;
-  /** Fraction of the viewport a slide-turn swipe must cover to commit. */
-  private static readonly SLIDE_SWIPE_RATIO = 0.15;
   /** Horizontal slop before a drag leaves the hold window (vertical uses axis lock only). */
   private static readonly HORIZONTAL_SLOP_PX = 8;
   /** Per-frame velocity decay while coasting after a pan release (~60fps frame). */
@@ -625,10 +625,10 @@ export class ViewerPage {
   private momentumAxis: GestureAxis | null = null;
   private momentumVelocity = 0;
   private momentumRaf: number | null = null;
-  /** True while a horizontal drag is a page-turn swipe (non-curl effects). */
-  private swipeTurn = false;
-  /** X where the swipe turn started (after any pan hit the page edge). */
-  private swipeStartX = 0;
+  /** True while a vertical or horizontal page slide is following the finger. */
+  private pageDragActive = false;
+  /** Pointer position on the slide axis where that drag began. */
+  private pageSlideOrigin = 0;
 
   public onStagePointerDown(event: PointerEvent): void {
     if (event.button !== 0) return;
@@ -690,8 +690,8 @@ export class ViewerPage {
       return;
     }
 
-    if (this.swipeTurn) {
-      this.recordPanSample(event.clientX, event.clientY);
+    if (this.pageDragActive) {
+      this.followPageSlide(event);
       return;
     }
 
@@ -703,22 +703,7 @@ export class ViewerPage {
     if (this.magnifierState.relayPan()) {
       this.applyPanFromDrag(dx, dy);
       this.recordPanSample(event.clientX, event.clientY);
-      if (this.gestureAxis === 'horizontal' && this.flipIntent(dx, event.clientX) === 'fold') {
-        // Reached the page edge: at a book boundary this starts the book
-        // slide; otherwise it hands off to the curl fold at the current
-        // pointer (the original hold point may be far away after the pan).
-        this.magnifierState.setRelayPan(false);
-        const boundary = this.bookBoundaryDirection(dx);
-        if (boundary !== null) {
-          this.beginBookTransition(boundary);
-          this.followBookDrag(event);
-        } else {
-          this.beginFlipRelay(event.clientX, event.clientY);
-          if (this.usesCurl()) {
-            this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
-          }
-        }
-      }
+      if (this.handoffPanToTurn(dx, dy, event)) return;
       return;
     }
 
@@ -765,12 +750,13 @@ export class ViewerPage {
       return;
     }
 
-    if (this.swipeTurn) {
-      this.swipeTurn = false;
-      this.commitSwipeTurn(event);
+    if (this.pageDragActive) {
+      this.pageDragActive = false;
       this.clearHoldTimer();
       this.gestureAxis = null;
       this.magnifierState.endGesture();
+      if (event.type === 'pointercancel') this.flip.cancelUserSlide();
+      else this.flip.endUserSlide();
       return;
     }
 
@@ -816,8 +802,8 @@ export class ViewerPage {
         this.flip.relayPointerUp(this.clampToPageX(first.x), first.y);
       }
     }
+    this.abortPageSlide();
     this.magnifierState.endGesture();
-    this.swipeTurn = false;
     this.gestureAxis = null;
     this.pinchConsumed = true;
 
@@ -862,9 +848,9 @@ export class ViewerPage {
   }
 
   /**
-   * Decide pan vs page-flip once the user moves past slop.
-   * Vertical movement pans tall pages; horizontal movement pans until an edge,
-   * then hands off to page-flip for the next/prev curl.
+   * Decide pan vs page turn once the user moves past slop.
+   * The scroll modes follow the finger on their axis. Page mode curls.
+   * The other axis still pans a zoomed page.
    */
   private tryBeginDragRelay(dx: number, dy: number, event: PointerEvent): void {
     const { overflowX, overflowY } = this.panExtents();
@@ -878,6 +864,13 @@ export class ViewerPage {
 
     if (Math.abs(dy) > Math.abs(dx)) {
       this.clearHoldTimer();
+      if (this.slideAxis() === 'vertical') {
+        const dir: 'next' | 'prev' = dy < 0 ? 'next' : 'prev';
+        if (this.pageSlideReady(dir) && this.beginPageSlide(dir, this.holdStartY)) {
+          this.followPageSlide(event);
+          return;
+        }
+      }
       // Downward pulls at the top of the page (or on a page that fits the
       // height) belong to the modal sheet's own drag gesture, which closes
       // the reader. Leave those to Ionic; only pan when there is page above.
@@ -893,26 +886,89 @@ export class ViewerPage {
       return;
     }
 
-    // Book boundary: a fold gesture past the last/first page starts a book
-    // slide instead (the lib has no page to flip there). Pan gestures still
-    // pan — only intercept when the drag would otherwise be a page fold.
-    const boundary = this.bookBoundaryDirection(dx);
-    if (boundary !== null && this.flipIntent(dx, event.clientX) === 'fold') {
-      this.beginBookTransition(boundary);
-      this.followBookDrag(event);
+    if (this.slideAxis() === 'horizontal') {
+      const boundary = this.bookBoundaryDirection(dx);
+      if (boundary !== null && this.horizontalEdgeReady(boundary)) {
+        this.beginBookTransition(boundary);
+        this.followBookDrag(event);
+        return;
+      }
+      const dir = this.horizontalSlideDir(dx);
+      if (this.pageSlideReady(dir) && this.beginPageSlide(dir, this.holdStartX)) {
+        this.followPageSlide(event);
+        return;
+      }
+      if (overflowX > 0) {
+        this.beginPanRelay('horizontal');
+        this.applyPanFromDrag(dx, dy);
+      }
       return;
     }
 
-    if (this.flipIntent(dx, event.clientX) === 'fold') {
-      this.beginFlipRelay();
-      this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
-      return;
+    // Page mode. A fold past the last/first page starts a book slide (the lib
+    // has no page to curl there). Otherwise the curl follows the finger.
+    if (this.usesCurl()) {
+      const boundary = this.bookBoundaryDirection(dx);
+      if (boundary !== null && this.flipIntent(dx, event.clientX) === 'fold') {
+        this.beginBookTransition(boundary);
+        this.followBookDrag(event);
+        return;
+      }
+
+      if (this.flipIntent(dx, event.clientX) === 'fold') {
+        this.beginFlipRelay();
+        this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
+        return;
+      }
     }
 
     if (overflowX > 0) {
       this.beginPanRelay('horizontal');
       this.applyPanFromDrag(dx, dy);
     }
+  }
+
+  /**
+   * A pan that has reached the edge of a zoomed page hands off to the turn
+   * for this mode: a curl, a finger-followed slide, or the next book.
+   */
+  private handoffPanToTurn(dx: number, dy: number, event: PointerEvent): boolean {
+    if (this.gestureAxis === 'vertical' && this.slideAxis() === 'vertical') {
+      const dir: 'next' | 'prev' = dy < 0 ? 'next' : 'prev';
+      if (!this.pageSlideReady(dir) || !this.beginPageSlide(dir, event.clientY)) return false;
+      this.magnifierState.setRelayPan(false);
+      this.followPageSlide(event);
+      return true;
+    }
+
+    if (this.gestureAxis !== 'horizontal') return false;
+
+    if (this.slideAxis() === 'horizontal') {
+      const boundary = this.bookBoundaryDirection(dx);
+      if (boundary !== null && this.horizontalEdgeReady(boundary)) {
+        this.magnifierState.setRelayPan(false);
+        this.beginBookTransition(boundary);
+        this.followBookDrag(event);
+        return true;
+      }
+      const dir = this.horizontalSlideDir(dx);
+      if (!this.pageSlideReady(dir) || !this.beginPageSlide(dir, event.clientX)) return false;
+      this.magnifierState.setRelayPan(false);
+      this.followPageSlide(event);
+      return true;
+    }
+
+    if (!this.usesCurl() || this.flipIntent(dx, event.clientX) !== 'fold') return false;
+    this.magnifierState.setRelayPan(false);
+    const boundary = this.bookBoundaryDirection(dx);
+    if (boundary !== null) {
+      this.beginBookTransition(boundary);
+      this.followBookDrag(event);
+      return true;
+    }
+    this.beginFlipRelay(event.clientX, event.clientY);
+    this.flip.relayPointerMove(this.clampToPageX(event.clientX), event.clientY);
+    return true;
   }
 
   private shouldBeginFlipRelay(dx: number): boolean {
@@ -1050,21 +1106,15 @@ export class ViewerPage {
    * last movement pulled the page back past a small tolerance.
    */
   private beginFlipRelay(x?: number, y?: number): void {
+    if (!this.usesCurl()) return;
     this.clearHoldTimer();
-    if (!this.usesCurl()) {
-      // Slide / none effects don't follow the finger: remember where the turn
-      // gesture started and decide on release.
-      this.swipeTurn = true;
-      this.swipeStartX = x ?? this.holdStartX;
-      this.gestureAxis = 'horizontal';
-      return;
-    }
     this.gestureAxis = null;
     this.magnifierState.setRelayFlip(true);
     const px = x ?? this.holdStartX;
     const py = y ?? this.holdStartY;
     if (this.bookstore.cornersVisible()) {
       this.flip.relayPointerDown(px, py);
+      this.holdReaderSheet();
       return;
     }
     // Zoomed: anchor the fold on the page edge nearest the pull so the curl
@@ -1072,33 +1122,101 @@ export class ViewerPage {
     const e = this.pageEdges();
     if (e === null) {
       this.flip.relayPointerDown(px, py);
+      this.holdReaderSheet();
       return;
     }
     const rtl = this.direction() === 'rtl';
     const center = (e.left + e.right) / 2;
     const pullNext = rtl ? px < center : px >= center;
     this.flip.relayPointerDown(pullNext ? e.right : e.left, py);
-  }
-
-  /** Commit (or drop) a non-curl page-turn swipe on pointer release. */
-  private commitSwipeTurn(event: PointerEvent): void {
-    const stage = this.hostRect();
-    const width = stage?.width ?? window.innerWidth;
-    const dx = event.clientX - this.swipeStartX;
-    if (Math.abs(dx) < ViewerPage.HORIZONTAL_SLOP_PX) return;
-
-    const velocity = this.computePanVelocity('horizontal');
-    const fling = Math.abs(velocity) > 0.5 && Math.sign(velocity) === Math.sign(dx);
-    if (Math.abs(dx) < width * ViewerPage.SLIDE_SWIPE_RATIO && !fling) return;
-
-    const rtl = this.direction() === 'rtl';
-    const next = rtl ? dx > 0 : dx < 0;
-    this.turnPage(next ? 'next' : 'prev');
+    this.holdReaderSheet();
   }
 
   /**
-   * Turn one spread in `direction`, honoring the Page transition setting:
-   * curl hands off to page-flip, slides animate via the service, none jumps.
+   * Abort a reader-sheet drag that already started on this press. The sheet
+   * stays off until the page turn settles; the app effect turns it back on.
+   */
+  private holdReaderSheet(): void {
+    const modal = this.stageRef()?.nativeElement.closest('ion-modal') as {
+      gesture?: { enable?: (on: boolean) => void };
+    } | null;
+    modal?.gesture?.enable?.(false);
+  }
+
+  /** LTR next is a leftward drag. RTL mirrors it. */
+  private horizontalSlideDir(dx: number): 'next' | 'prev' {
+    const rtl = this.direction() === 'rtl';
+    return (rtl ? dx > 0 : dx < 0) ? 'next' : 'prev';
+  }
+
+  /** The page can slide this way: there is a neighbor, and a zoomed page is at that edge. */
+  private pageSlideReady(dir: 'next' | 'prev'): boolean {
+    const axis = this.slideAxis();
+    if (axis === null || this.flip.neighborPage(dir) === null) return false;
+    return axis === 'vertical' ? this.verticalEdgeReady(dir) : this.horizontalEdgeReady(dir);
+  }
+
+  private horizontalEdgeReady(dir: 'next' | 'prev'): boolean {
+    const { overflowX } = this.panExtents();
+    if (overflowX <= 0) return true;
+    const forwardIsLeft = this.direction() !== 'rtl';
+    if (dir === 'next') return forwardIsLeft ? this.atRightEdge() : this.atLeftEdge();
+    return forwardIsLeft ? this.atLeftEdge() : this.atRightEdge();
+  }
+
+  private verticalEdgeReady(dir: 'next' | 'prev'): boolean {
+    const { overflowY } = this.panExtents();
+    if (overflowY <= 0) return true;
+    return dir === 'next' ? this.atBottomEdge() : this.atTopEdge();
+  }
+
+  private atTopEdge(): boolean {
+    const { overflowY } = this.panExtents();
+    if (overflowY <= 0) return true;
+    return this.panOffsetY() >= -1;
+  }
+
+  private atBottomEdge(): boolean {
+    const { minY, overflowY } = this.panExtents();
+    if (overflowY <= 0) return true;
+    return this.panOffsetY() <= minY + 1;
+  }
+
+  /**
+   * Start a slide that tracks the finger. `origin` is the pointer coordinate
+   * on that axis; a handoff from a pan passes the current point so the page
+   * does not jump.
+   */
+  private beginPageSlide(dir: 'next' | 'prev', origin: number): boolean {
+    const axis = this.slideAxis();
+    if (axis === null) return false;
+    const started = this.flip.beginUserSlide(dir, axis, this.direction() === 'rtl');
+    if (!started) return false;
+    this.clearHoldTimer();
+    this.gestureAxis = null;
+    this.pageDragActive = true;
+    this.pageSlideOrigin = origin;
+    this.holdReaderSheet();
+    return true;
+  }
+
+  private followPageSlide(event: PointerEvent): void {
+    const axis = this.slideAxis();
+    if (axis === null) return;
+    const delta = axis === 'horizontal' ? event.clientX - this.pageSlideOrigin : event.clientY - this.pageSlideOrigin;
+    this.flip.moveUserSlide(delta);
+  }
+
+  /** Pinch, blur, or a cancelled pointer abandons the slide and restores the page. */
+  private abortPageSlide(): void {
+    if (!this.pageDragActive) return;
+    this.pageDragActive = false;
+    this.flip.cancelUserSlide();
+  }
+
+  /**
+   * Turn one spread in `direction`. A tap still animates; a drag follows the
+   * finger instead and does not come through here.
    */
   private turnPage(direction: 'next' | 'prev'): void {
     if (this.flip.turning()) return;
@@ -1112,11 +1230,6 @@ export class ViewerPage {
 
     const target = this.flip.neighborPage(direction);
     if (target === null) return;
-
-    if (transition === 'none') {
-      this.flip.turnToPage(target);
-      return;
-    }
 
     this.flip.slideToPage(
       target,
@@ -1221,7 +1334,7 @@ export class ViewerPage {
     this.stopMomentum();
     this.gestureAxis = null;
     this.bookDragActive = false;
-    this.swipeTurn = false;
+    this.abortPageSlide();
     this.magnifierState.endGesture();
   }
 
@@ -1232,7 +1345,7 @@ export class ViewerPage {
       this.stopMomentum();
       this.gestureAxis = null;
       this.bookDragActive = false;
-      this.swipeTurn = false;
+      this.abortPageSlide();
       this.magnifierState.endGesture();
     }
   }

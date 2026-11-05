@@ -7,17 +7,13 @@ import {
 import {
   IonIcon,
   IonItem,
-  IonLabel,
   IonList,
   IonSelect,
   IonSelectOption,
-  IonToggle,
 } from '@ionic/angular/standalone';
 
 import type {
-  InterfaceTheme,
   PageLayout,
-  PageTransition,
   ReadingDirection,
   ScreenOrientation,
   ViewerMode,
@@ -31,16 +27,9 @@ interface Option<T extends string> {
 }
 
 const PAGE_LAYOUT_OPTIONS: readonly Option<PageLayout>[] = [
-  { value: 'default', label: 'Default' },
-  { value: 'auto-single', label: 'Auto single page' },
-  { value: 'auto-dual', label: 'Auto dual page' },
-  { value: 'auto-switch', label: 'Auto switch' },
-];
-
-const THEME_OPTIONS: readonly Option<InterfaceTheme>[] = [
   { value: 'auto', label: 'Auto' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
+  { value: 'single', label: 'Single page' },
+  { value: 'dual', label: 'Dual page' },
 ];
 
 const VIEWER_MODE_OPTIONS: readonly Option<ViewerMode>[] = [
@@ -49,34 +38,18 @@ const VIEWER_MODE_OPTIONS: readonly Option<ViewerMode>[] = [
   { value: 'horizontal-scroll', label: 'Horizontal scroll' },
 ];
 
-/**
- * Page-curl sits first in the popover so users see what's coming; "None"
- * sits last because it's the boring default once the real effects exist.
- */
-const PAGE_TRANSITION_OPTIONS: readonly Option<PageTransition>[] = [
-  { value: 'page-curl', label: 'Page curl' },
-  { value: 'slide-horizontal', label: 'Slide left/right' },
-  { value: 'slide-vertical', label: 'Slide up/down' },
-  { value: 'none', label: 'None' },
-];
-
 const ORIENTATION_OPTIONS: readonly Option<ScreenOrientation>[] = [
   { value: 'auto', label: 'Auto' },
   { value: 'portrait', label: 'Portrait' },
   { value: 'landscape', label: 'Landscape' },
   { value: 'portrait-inverted', label: 'Portrait (inverted)' },
   { value: 'landscape-inverted', label: 'Landscape (inverted)' },
-  { value: 'default', label: 'Default' },
 ];
 
 const ZOOM_OPTIONS: readonly Option<ZoomMode>[] = [
-  { value: 'actual-size', label: 'Actual size' },
   { value: 'fit-screen', label: 'Fit to screen' },
   { value: 'fit-width', label: 'Fit to width' },
   { value: 'fit-height', label: 'Fit to height' },
-  { value: 'fixed-size', label: 'Fixed size' },
-  { value: 'stretch-to-fill', label: 'Stretch to fill screen' },
-  { value: 'cover', label: 'Cover' },
 ];
 
 const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
@@ -95,7 +68,7 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
   selector: 'ov-display-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonItem, IonLabel, IonList, IonSelect, IonSelectOption, IonToggle],
+  imports: [IonIcon, IonItem, IonList, IonSelect, IonSelectOption],
   template: `
     <ion-list lines="none" class="settings-list">
       <ion-item>
@@ -169,35 +142,14 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           md="scan-sharp"
         ></ion-icon>
         <ion-select
-          label="Zoom"
+          label="Default zoom"
           class="display-select"
           [value]="zoom()"
           (ionChange)="onZoomChange($event)"
           interface="popover"
-          aria-label="Zoom"
+          aria-label="Default zoom"
         >
           @for (opt of zooms; track opt.value) {
-            <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
-          }
-        </ion-select>
-      </ion-item>
-
-      <ion-item>
-        <ion-icon
-          aria-hidden="true"
-          slot="start"
-          ios="contrast-outline"
-          md="contrast-sharp"
-        ></ion-icon>
-        <ion-select
-          label="Interface theme"
-          class="display-select"
-          [value]="theme()"
-          (ionChange)="onThemeChange($event)"
-          interface="popover"
-          aria-label="Interface theme"
-        >
-          @for (opt of themes; track opt.value) {
             <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
           }
         </ion-select>
@@ -223,42 +175,6 @@ const READING_DIRECTION_OPTIONS: readonly Option<ReadingDirection>[] = [
           }
         </ion-select>
       </ion-item>
-
-      <ion-item>
-        <ion-icon
-          aria-hidden="true"
-          slot="start"
-          ios="refresh-outline"
-          md="refresh-sharp"
-        ></ion-icon>
-        <ion-select
-          label="Page transition effect"
-          class="display-select"
-          [value]="pageTransition()"
-          (ionChange)="onPageTransitionChange($event)"
-          interface="popover"
-          aria-label="Page transition"
-        >
-          @for (opt of pageTransitions; track opt.value) {
-            <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
-          }
-        </ion-select>
-      </ion-item>
-    <ion-item>
-        <ion-icon
-          aria-hidden="true"
-          slot="start"
-          ios="sunny-outline"
-          md="sunny-sharp"
-        ></ion-icon>
-        <ion-label>Keep screen awake</ion-label>
-        <ion-toggle
-          slot="end"
-          [checked]="keepAwake()"
-          (ionChange)="onKeepAwakeChange($event)"
-          aria-label="Keep screen awake while reading"
-        ></ion-toggle>
-      </ion-item>
     </ion-list>
   `,
   styles: [
@@ -283,9 +199,7 @@ export class DisplaySettingsComponent {
   private readonly settings = inject(SettingsService);
 
   public readonly pageLayouts = PAGE_LAYOUT_OPTIONS;
-  public readonly themes = THEME_OPTIONS;
   public readonly viewerModes = VIEWER_MODE_OPTIONS;
-  public readonly pageTransitions = PAGE_TRANSITION_OPTIONS;
   public readonly orientations = ORIENTATION_OPTIONS;
   public readonly readingDirections = READING_DIRECTION_OPTIONS;
   public readonly zooms = ZOOM_OPTIONS;
@@ -293,16 +207,9 @@ export class DisplaySettingsComponent {
   // Bindings — read from the settings signal each cycle.
   public readonly orientation = computed(() => this.settings.settings().display.screenOrientation);
   public readonly pageLayout = computed(() => this.settings.settings().display.pageLayout);
-  public readonly theme = computed(() => this.settings.settings().display.interfaceTheme);
   public readonly viewerMode = computed(() => this.settings.settings().display.viewerMode);
-  public readonly pageTransition = computed(() => this.settings.settings().display.pageTransition);
   public readonly zoom = computed(() => this.settings.settings().display.zoom);
   public readonly readingDirection = computed(() => this.settings.settings().display.readingDirection);
-  public readonly keepAwake = computed(() => this.settings.settings().display.keepAwake);
-
-  public onKeepAwakeChange(event: CustomEvent<{ checked: boolean }>): void {
-    this.settings.setKeepAwake(event.detail.checked);
-  }
 
   public onReadingDirectionChange(event: CustomEvent<{ value: ReadingDirection | undefined }>): void {
     const v = event.detail.value;
@@ -319,22 +226,9 @@ export class DisplaySettingsComponent {
 
   public onZoomChange(event: CustomEvent<{ value: ZoomMode | undefined }>): void {
     const v = event.detail.value;
-    if (
-      v === 'actual-size' ||
-      v === 'fit-screen' ||
-      v === 'fit-width' ||
-      v === 'fit-height' ||
-      v === 'fixed-size' ||
-      v === 'stretch-to-fill' ||
-      v === 'cover'
-    ) {
+    if (v === 'fit-screen' || v === 'fit-width' || v === 'fit-height') {
       this.settings.setZoom(v);
     }
-  }
-
-  public onThemeChange(event: CustomEvent<{ value: InterfaceTheme | undefined }>): void {
-    const v = event.detail.value;
-    if (v === 'auto' || v === 'light' || v === 'dark') this.settings.setInterfaceTheme(v);
   }
 
   public onViewerModeChange(event: CustomEvent<{ value: ViewerMode | undefined }>): void {
@@ -342,9 +236,5 @@ export class DisplaySettingsComponent {
     if (v === 'paged' || v === 'vertical-scroll' || v === 'horizontal-scroll') {
       this.settings.setViewerMode(v);
     }
-  }
-
-  public onPageTransitionChange(event: CustomEvent<{ value: PageTransition | undefined }>): void {
-    if (event.detail.value !== undefined) this.settings.setPageTransition(event.detail.value);
   }
 }

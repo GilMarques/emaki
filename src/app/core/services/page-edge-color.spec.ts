@@ -1,4 +1,4 @@
-import { blendEdgeColors, sampleEdgeColor } from './page-edge-color';
+import { blendEdgeColors, mixHex, sampleEdgeColor } from './page-edge-color';
 
 describe('sampleEdgeColor', () => {
   function paint(
@@ -51,5 +51,18 @@ describe('blendEdgeColors', () => {
 
   it('falls back when nothing was sampled', () => {
     expect(blendEdgeColors([null, undefined])).toBe('#555555');
+  });
+});
+
+describe('mixHex', () => {
+  it('follows page-flip completion from the current margin to the next', () => {
+    expect(mixHex('#000000', '#ffffff', 0)).toBe('#000000');
+    expect(mixHex('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(mixHex('#000000', '#ffffff', 1)).toBe('#ffffff');
+  });
+
+  it('clamps progress outside the flip', () => {
+    expect(mixHex('#000000', '#ffffff', -0.2)).toBe('#000000');
+    expect(mixHex('#000000', '#ffffff', 1.4)).toBe('#ffffff');
   });
 });

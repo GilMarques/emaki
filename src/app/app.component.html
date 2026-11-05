@@ -125,7 +125,9 @@
   </ion-split-pane>
 
   <ion-modal
+    #readerSheet
     class="reader-sheet"
+    [class.magnifier-active]="magnifierActive()"
     [isOpen]="isReaderOpen()"
     [breakpoints]="[0, 1]"
     [initialBreakpoint]="1"

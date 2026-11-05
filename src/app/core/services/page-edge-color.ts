@@ -70,6 +70,22 @@ export function blendEdgeColors(colors: readonly (string | null | undefined)[]):
   return toHex(red, green, blue);
 }
 
+/**
+ * Blend two margin colors by a page-flip completion in `[0, 1]`.
+ * `0` is the page still on screen, `1` is the page being revealed.
+ */
+export function mixHex(from: string, to: string, progress: number): string {
+  const start = parseHex(from);
+  const end = parseHex(to);
+  if (start === null || end === null) return progress >= 1 ? to : from;
+  const t = Math.min(1, Math.max(0, progress));
+  return toHex(
+    Math.round(start.r + (end.r - start.r) * t),
+    Math.round(start.g + (end.g - start.g) * t),
+    Math.round(start.b + (end.b - start.b) * t),
+  );
+}
+
 interface Rgb {
   readonly r: number;
   readonly g: number;

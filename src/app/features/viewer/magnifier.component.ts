@@ -5,6 +5,8 @@ import {
   input,
 } from '@angular/core';
 
+import { SURROUND_FALLBACK } from '../../core/services/page-edge-color';
+
 /**
  * Loupe overlay rendered when the user holds a pointer on the page.
  *
@@ -33,6 +35,7 @@ import {
         [style.background-image]="backgroundImage()"
         [style.background-size]="backgroundSize()"
         [style.background-position]="backgroundPosition()"
+        [style.background-color]="background()"
         [style.width.px]="loupeWidthPx()"
         [style.height.px]="loupeHeightPx()"
         aria-hidden="true"
@@ -51,7 +54,6 @@ import {
         position: absolute;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         background-repeat: no-repeat;
-        background-color: #000;
       }
       .loupe.tl { top: 3vmin; left: 3vmin; }
       .loupe.tr { top: 3vmin; right: 3vmin; }
@@ -82,6 +84,9 @@ export class MagnifierComponent {
 
   /** Magnification factor from settings. 1 = no zoom. */
   public readonly zoom = input<number>(1);
+
+  /** Fills the loupe past the page edge. Same color as the viewer letterbox. */
+  public readonly background = input<string>(SURROUND_FALLBACK);
 
   /** Viewport size (used for placement decisions). */
   public readonly viewportWidth = input<number>(0);
@@ -162,13 +167,45 @@ export class MagnifierComponent {
   public readonly backgroundPosition = computed<string>(() => {
     const frac = this.pointerFraction();
     if (frac === null) return '0px 0px';
-    const nw = this.naturalWidth();
-    const nh = this.naturalHeight();
-    const z = this.zoom();
-    const halfW = this.loupeWidthPx() / 2;
-    const halfH = this.loupeHeightPx() / 2;
-    const srcX = frac.fx * nw;
-    const srcY = frac.fy * nh;
-    return `${-srcX * z + halfW}px ${-srcY * z + halfH}px`;
+    return loupeBackgroundPosition(
+      frac.fx,
+      frac.fy,
+      this.naturalWidth(),
+      this.naturalHeight(),
+      this.zoom(),
+      this.loupeWidthPx(),
+      this.loupeHeightPx(),
+    );
   });
+}
+
+/** Viewport rect of a page drawn at `frame` inside a spread scaled from its top-left. */
+export function placedPageRect(
+  stage: { readonly left: number; readonly top: number },
+  panX: number,
+  panY: number,
+  frame: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  zoom: number,
+): DOMRect {
+  return new DOMRect(
+    stage.left + panX + frame.x * zoom,
+    stage.top + panY + frame.y * zoom,
+    frame.width * zoom,
+    frame.height * zoom,
+  );
+}
+
+/** `background-position` that puts source fraction `(fx, fy)` at the loupe's centre. */
+export function loupeBackgroundPosition(
+  fx: number,
+  fy: number,
+  naturalWidth: number,
+  naturalHeight: number,
+  zoom: number,
+  loupeWidth: number,
+  loupeHeight: number,
+): string {
+  const x = -(fx * naturalWidth) * zoom + loupeWidth / 2;
+  const y = -(fy * naturalHeight) * zoom + loupeHeight / 2;
+  return `${x}px ${y}px`;
 }

@@ -11,6 +11,30 @@
   <ion-list-header>App</ion-list-header>
   <ion-list lines="inset">
     <ion-item>
+      <ion-icon slot="start" name="contrast-outline" aria-hidden="true"></ion-icon>
+      <ion-select
+        label="Interface theme"
+        [value]="theme()"
+        (ionChange)="onThemeChange($event)"
+        interface="popover"
+        aria-label="Interface theme"
+      >
+        @for (opt of themes; track opt.value) {
+          <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-icon slot="start" name="sunny-outline" aria-hidden="true"></ion-icon>
+      <ion-label>Keep screen awake</ion-label>
+      <ion-toggle
+        slot="end"
+        [checked]="keepAwake()"
+        (ionChange)="onKeepAwakeChange($event)"
+        aria-label="Keep screen awake while reading"
+      ></ion-toggle>
+    </ion-item>
+    <ion-item>
       <ion-label>Reset all settings to defaults</ion-label>
       <ion-button slot="end" fill="outline" color="danger" (click)="resetToDefaults()">
         Reset

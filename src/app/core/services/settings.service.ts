@@ -13,7 +13,8 @@ import {
   type ImageSmoothMethod,
   type InterfaceTheme,
   type PageLayout,
-  type PageTransition,
+  normalizePageLayout,
+  normalizeZoom,
   type ReadingDirection,
   type ScreenOrientation,
   type ViewerMode,
@@ -65,10 +66,6 @@ export class SettingsService {
 
   public setViewerMode(value: ViewerMode): void {
     this._settings.update((s) => ({ ...s, display: { ...s.display, viewerMode: value } }));
-  }
-
-  public setPageTransition(value: PageTransition): void {
-    this._settings.update((s) => ({ ...s, display: { ...s.display, pageTransition: value } }));
   }
 
   public setZoom(value: ZoomMode): void {
@@ -167,12 +164,15 @@ export class SettingsService {
     const d = (i.display ?? {}) as Record<string, unknown>;
     const display: DisplaySettings = {
       readingDirection: this.pickEnum(d['readingDirection'], ['ltr', 'rtl'], fallback.display.readingDirection),
-      screenOrientation: this.pickEnum(d['screenOrientation'], ['auto', 'portrait', 'landscape', 'portrait-inverted', 'landscape-inverted', 'default'], fallback.display.screenOrientation),
-      pageLayout: this.pickEnum(d['pageLayout'], ['default', 'auto-single', 'auto-dual', 'auto-switch'], fallback.display.pageLayout),
+      screenOrientation: this.pickEnum(
+        d['screenOrientation'] === 'default' ? 'auto' : d['screenOrientation'],
+        ['auto', 'portrait', 'landscape', 'portrait-inverted', 'landscape-inverted'],
+        fallback.display.screenOrientation,
+      ),
+      pageLayout: normalizePageLayout(d['pageLayout']) ?? fallback.display.pageLayout,
       interfaceTheme: this.pickEnum(d['interfaceTheme'], ['auto', 'light', 'dark'], fallback.display.interfaceTheme),
       viewerMode: this.pickEnum(d['viewerMode'], ['paged', 'vertical-scroll', 'horizontal-scroll'], fallback.display.viewerMode),
-      pageTransition: this.pickEnum(d['pageTransition'], ['none', 'slide-horizontal', 'slide-vertical', 'page-curl'], fallback.display.pageTransition),
-      zoom: this.pickEnum(d['zoom'], ['actual-size', 'fit-screen', 'fit-width', 'fit-height', 'fixed-size', 'stretch-to-fill', 'cover'], fallback.display.zoom),
+      zoom: normalizeZoom(d['zoom']) ?? fallback.display.zoom,
       magnifierZoom: this.pickNumber(d['magnifierZoom'], MAGNIFIER_BOUNDS.min, MAGNIFIER_BOUNDS.max, fallback.display.magnifierZoom),
       keepAwake: typeof d['keepAwake'] === 'boolean' ? d['keepAwake'] : fallback.display.keepAwake,
     };

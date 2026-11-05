@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
 
@@ -6,7 +6,15 @@ import type { Book, Page } from '../models/book.model';
 import type { PageTransition, ZoomMode } from '../models/settings.model';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
-import { SURROUND_FALLBACK, blendEdgeColors, sampleEdgeColor } from './page-edge-color';
+import { SURROUND_FALLBACK, blendEdgeColors, mixHex, sampleEdgeColor } from './page-edge-color';
+import {
+  SLIDE_PULLBACK_PX,
+  clampSlideOffset,
+  slideColorProgress,
+  slideSettleOffset,
+  slideShouldCommit,
+  slideSign,
+} from './page-slide';
 import { ScanEnhancementService } from './scan-enhancement.service';
 
 type NaturalSize = { readonly width: number; readonly height: number };
@@ -22,6 +30,34 @@ type RenderedPages = {
 
 /** Page-flip state machine values delivered by the lib's `changeState` event. */
 export type FlipGestureState = 'user_fold' | 'fold_corner' | 'flipping' | 'read';
+
+/** Finger-followed page slide. Offsets are host layout px. */
+type UserSlide = {
+  readonly overlay: HTMLCanvasElement;
+  readonly canvas: HTMLCanvasElement;
+  readonly axis: 'horizontal' | 'vertical';
+  readonly sign: 1 | -1;
+  readonly distanceHost: number;
+  readonly originIndex: number;
+  readonly originRendered: number;
+  readonly targetRendered: number;
+  offset: number;
+  peak: number;
+  /** Offset captured when the finger lifts, so the settle can blend from there. */
+  releaseOffset: number;
+  /** Host-px offset the settle animation is heading for. */
+  settleTo: number;
+  settling: boolean;
+  animations: Animation[];
+};
+
+/** Current page's draw box inside the spread, CSS px, before wheel zoom. */
+export type PageFrame = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
 
 /**
  * Wraps a `page-flip` (StPageFlip) instance — owns its lifecycle, exposes
@@ -67,9 +103,43 @@ export class BookFlipService {
   private readonly _surroundColor = signal(SURROUND_FALLBACK);
   public readonly surroundColor = this._surroundColor.asReadonly();
 
+  /**
+   * True while a vertical or horizontal slide is painting the letterbox from
+   * its own progress. The curl uses flip state for the same lock.
+   */
+  private readonly _surroundLive = signal(false);
+  public readonly surroundLive = this._surroundLive.asReadonly();
+
   /** Latest page-flip state from the lib's `changeState` event. */
   private readonly _flipState = signal<FlipGestureState | null>(null);
   public readonly flipState = this._flipState.asReadonly();
+
+  /**
+   * True from the moment a page curl or slide starts until it has settled.
+   * The reader sheet uses this to ignore a pull-down for the whole turn.
+   */
+  public readonly pageTurning = computed(() => {
+    const state = this._flipState();
+    return (
+      state === 'user_fold' ||
+      state === 'fold_corner' ||
+      state === 'flipping' ||
+      this._surroundLive() ||
+      this._turning()
+    );
+  });
+
+  /** rAF while a leaf is moving, so the letterbox tracks the curl. */
+  private trackFrame: number | null = null;
+
+  /** rAF while a slide is moving, so the letterbox tracks that slide. */
+  private slideColorFrame: number | null = null;
+  /** Active slide blend. Progress is 0 on the page we left and 1 on the page we reveal. */
+  private slideColor: {
+    originRendered: number;
+    targetRendered: number;
+    progress: () => number;
+  } | null = null;
 
   /** Reactive current page index (0-based), mirrored from the lib. */
   private readonly _currentIndex = signal(0);
@@ -86,11 +156,31 @@ export class BookFlipService {
   /** Tears down the in-flight slide animation, if any. */
   private slideCleanup: (() => void) | null = null;
 
+  /**
+   * While a finger-followed slide has already turned the canvas to the incoming
+   * page, keep that index off the bookshelf until the gesture commits.
+   */
+  private suppressSync = false;
+
+  /** Finger-followed slide. The overlay is the page the drag started on. */
+  private userSlide: UserSlide | null = null;
+
   /** Book-wide single-page size the lib is mounted with. Stable per mount and
    *  independent of which page is currently shown, so fit modes apply to the
    *  whole book and page turns never resize the canvas. */
   private readonly _bookPageSize = signal<{ width: number; height: number } | null>(null);
   public readonly bookPageSize = this._bookPageSize.asReadonly();
+
+  /**
+   * Where the current page is drawn inside the spread, in CSS px before the
+   * wheel-zoom scale. Page-flip centers the leaf in the canvas, so this is
+   * not the spread's top-left.
+   */
+  private readonly _pageFrame = signal<PageFrame | null>(null);
+  public readonly pageFrame = this._pageFrame.asReadonly();
+
+  /** Device pixel ratio the current mount was laid out at. Bounds are in those px. */
+  private mountDpr = 1;
 
   /**
    * Mount a PageFlip instance on `host` and load all pages from `book`.
@@ -158,6 +248,7 @@ export class BookFlipService {
     // device-pixel size and scale the host back down with CSS: the canvas
     // backing store then matches the screen 1:1.
     const dpr = Math.max(1, window.devicePixelRatio || 1);
+    this.mountDpr = dpr;
     const devW = Math.max(1, Math.round(cssBox.width * dpr));
     const devH = Math.max(1, Math.round(cssBox.height * dpr));
     host.style.width = `${devW}px`;
@@ -229,9 +320,15 @@ export class BookFlipService {
       // so the viewer can gate gesture handling on it.
       pf.on('changeState', (e) => {
         const s = e.data;
-        if (s === 'user_fold' || s === 'fold_corner' || s === 'flipping' || s === 'read') {
-          this._flipState.set(s);
-        }
+        if (s !== 'user_fold' && s !== 'fold_corner' && s !== 'flipping' && s !== 'read') return;
+        this._flipState.set(s);
+        // A finger-followed slide turns the canvas early and keeps the old
+        // page on an overlay. Leave the letterbox alone until that gesture ends.
+        if (this.suppressSync) return;
+        // The lib reports the new page index when the leaf lands. Follow the
+        // curl while it is moving so the letterbox arrives with the page.
+        if (s === 'read') this.settleSurround();
+        else this.startFlipTrack();
       });
 
       this.instance = pf;
@@ -245,8 +342,11 @@ export class BookFlipService {
   public unmount(): void {
     this.mountGeneration++;
     this.finishSlide();
+    this.dropUserSlide();
+    this.cancelFlipTrack();
     this._flipState.set(null);
     this._bookPageSize.set(null);
+    this._pageFrame.set(null);
     this.logicalIndexByRenderedIndex = [];
     this.renderedIndexByLogicalIndex = [];
     if (this.instance === null) return;
@@ -405,10 +505,14 @@ export class BookFlipService {
     });
     host.appendChild(overlay);
 
+    const originRendered = instance.getCurrentPageIndex();
+    // Hold the bookshelf on the outgoing page. The blend below paints the
+    // letterbox; publishing the index now would snap the color to the destination.
+    this.suppressSync = true;
     this.turnToPage(index);
 
-    // Next page comes from reading-forward-left in LTR next, mirrored in RTL.
-    const sign = (direction === 'next') === !rtl ? -1 : 1;
+    // Next page comes from the left (LTR) or from above. RTL mirrors horizontal only.
+    const sign = slideSign(direction, axis, rtl);
     const shift = (value: number): string =>
       axis === 'horizontal'
         ? `translate3d(${value}px, 0, 0)`
@@ -432,16 +536,277 @@ export class BookFlipService {
       inAnimation.cancel();
       outAnimation.cancel();
       this.slideCleanup = null;
+      this.suppressSync = false;
+      this.stopSlideSurround(target);
+      const rendered = this.instance?.getCurrentPageIndex();
+      if (rendered !== undefined) this.syncPageIndex(rendered);
       this._turning.set(false);
     };
     this.slideCleanup = finish;
     this._turning.set(true);
+    this.trackSlideSurround(originRendered, target, () => {
+      const eased = outAnimation.effect?.getComputedTiming().progress;
+      return typeof eased === 'number' ? eased : 0;
+    });
 
     void Promise.all([outAnimation.finished, inAnimation.finished])
       .catch(() => undefined)
       .then(() => {
         if (this.slideCleanup === finish) finish();
       });
+  }
+
+  /**
+   * Start a finger-followed slide. The current spread is copied onto an overlay
+   * and the live canvas turns to the incoming page underneath, parked one
+   * viewport away. Later moves track the finger; release commits or returns.
+   */
+  public beginUserSlide(
+    direction: 'next' | 'prev',
+    axis: 'horizontal' | 'vertical',
+    rtl: boolean,
+  ): boolean {
+    const instance = this.instance;
+    const host = this.host;
+    if (instance === null || host === null || this._turning() || this.userSlide !== null) return false;
+
+    const target = this.neighborPage(direction);
+    if (target === null) return false;
+
+    const element = instance.getUI().getDistElement();
+    if (!(element instanceof HTMLCanvasElement) || element.width === 0 || element.height === 0) {
+      return false;
+    }
+
+    const distanceHost = this.slideDistanceHost(axis);
+    if (distanceHost <= 0) return false;
+
+    const overlay = document.createElement('canvas');
+    overlay.width = element.width;
+    overlay.height = element.height;
+    const ctx = overlay.getContext('2d');
+    if (ctx === null) return false;
+    try {
+      ctx.drawImage(element, 0, 0);
+    } catch {
+      return false;
+    }
+
+    this.placeSlideOverlay(overlay, element, host);
+    host.appendChild(overlay);
+
+    const sign = slideSign(direction, axis, rtl);
+    const originIndex = this._currentIndex();
+    const originRendered = instance.getCurrentPageIndex();
+    const targetRendered = this.renderedIndexByLogicalIndex[target] ?? target;
+    this.suppressSync = true;
+    this.turnToPage(target);
+    const slide: UserSlide = {
+      overlay,
+      canvas: element,
+      axis,
+      sign,
+      distanceHost,
+      originIndex,
+      originRendered,
+      targetRendered,
+      offset: 0,
+      peak: 0,
+      releaseOffset: 0,
+      settleTo: 0,
+      settling: false,
+      animations: [],
+    };
+    this.userSlide = slide;
+    this.applyUserSlide(slide);
+    this.trackSlideSurround(originRendered, targetRendered, () => {
+      const current = this.userSlide;
+      return current === null ? 0 : this.slideTravel(current);
+    });
+    return true;
+  }
+
+  /** Move the slide with the finger. `screenDelta` is the axis delta in CSS px. */
+  public moveUserSlide(screenDelta: number): void {
+    const slide = this.userSlide;
+    if (slide === null || slide.settling) return;
+    const offset = clampSlideOffset(this.screenToHost(screenDelta), slide.sign, slide.distanceHost);
+    slide.offset = offset;
+    slide.peak = slide.sign < 0 ? Math.min(slide.peak, offset) : Math.max(slide.peak, offset);
+    this.applyUserSlide(slide);
+  }
+
+  /**
+   * Release. Commits unless the finger pulled back past the tolerance from
+   * the furthest point, matching the page-curl release rule.
+   */
+  public endUserSlide(): void {
+    const slide = this.userSlide;
+    if (slide === null || slide.settling) return;
+    const commit = slideShouldCommit(
+      this.hostToScreen(slide.offset),
+      this.hostToScreen(slide.peak),
+      slide.sign,
+      SLIDE_PULLBACK_PX,
+    );
+    this.settleUserSlide(commit);
+  }
+
+  /** Drop the gesture and return to the page it started on. */
+  public cancelUserSlide(): void {
+    const slide = this.userSlide;
+    if (slide === null || slide.settling) return;
+    this.settleUserSlide(false);
+  }
+
+  /** One viewport of travel, in the host's layout px (device px, before zoom). */
+  private slideDistanceHost(axis: 'horizontal' | 'vertical'): number {
+    const host = this.host;
+    if (host === null) return 0;
+    const zoom = this.bookstore.zoom() || 1;
+    const layout = axis === 'horizontal' ? host.clientWidth : host.clientHeight;
+    return layout / zoom;
+  }
+
+  /** Screen CSS px → host layout px. The host is scaled by 1/dpr and by the wheel zoom. */
+  private screenToHost(screenPx: number): number {
+    const zoom = this.bookstore.zoom() || 1;
+    return (screenPx * this.mountDpr) / zoom;
+  }
+
+  private hostToScreen(hostPx: number): number {
+    const zoom = this.bookstore.zoom() || 1;
+    return (hostPx * zoom) / this.mountDpr;
+  }
+
+  /** 0 on the page the drag started on, 1 when the incoming page is fully in view. */
+  private slideTravel(slide: UserSlide): number {
+    let offset = slide.offset;
+    if (slide.settling) {
+      const eased = slide.animations[0]?.effect?.getComputedTiming().progress;
+      if (typeof eased === 'number') {
+        offset = slideSettleOffset(slide.releaseOffset, slide.settleTo, eased);
+      }
+    }
+    return slideColorProgress(offset, slide.distanceHost);
+  }
+
+  private slideTransform(slide: UserSlide, hostPx: number): string {
+    return slide.axis === 'horizontal'
+      ? `translate3d(${hostPx}px, 0, 0)`
+      : `translate3d(0, ${hostPx}px, 0)`;
+  }
+
+  /** Cover the live canvas with a copy of the page the drag started on. */
+  private placeSlideOverlay(
+    overlay: HTMLCanvasElement,
+    canvas: HTMLCanvasElement,
+    host: HTMLElement,
+  ): void {
+    let x = 0;
+    let y = 0;
+    let el: HTMLElement | null = canvas;
+    let reachedHost = false;
+    while (el !== null && el !== host) {
+      x += el.offsetLeft;
+      y += el.offsetTop;
+      const next: Element | null = el.offsetParent;
+      if (next === host) reachedHost = true;
+      el = next instanceof HTMLElement ? next : null;
+    }
+    if (reachedHost) {
+      overlay.style.left = `${x}px`;
+      overlay.style.top = `${y}px`;
+      overlay.style.width = `${canvas.offsetWidth}px`;
+      overlay.style.height = `${canvas.offsetHeight}px`;
+    } else {
+      overlay.style.inset = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+    }
+    overlay.style.position = 'absolute';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '1000';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  private applyUserSlide(slide: UserSlide): void {
+    const incoming = slide.offset - slide.sign * slide.distanceHost;
+    slide.overlay.style.transform = this.slideTransform(slide, slide.offset);
+    slide.canvas.style.transform = this.slideTransform(slide, incoming);
+  }
+
+  /** Glide the rest of the way, then publish the new page or restore the old one. */
+  private settleUserSlide(commit: boolean): void {
+    const slide = this.userSlide;
+    if (slide === null) return;
+    const to = commit ? slide.sign * slide.distanceHost : 0;
+    slide.releaseOffset = slide.offset;
+    slide.settleTo = to;
+    slide.settling = true;
+    this._turning.set(true);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const options: KeyframeAnimationOptions = {
+      duration: reduce ? 0 : 240,
+      easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
+      fill: 'forwards',
+    };
+    const overlayAnim = slide.overlay.animate(
+      [
+        { transform: this.slideTransform(slide, slide.offset) },
+        { transform: this.slideTransform(slide, to) },
+      ],
+      options,
+    );
+    const canvasAnim = slide.canvas.animate(
+      [
+        { transform: this.slideTransform(slide, slide.offset - slide.sign * slide.distanceHost) },
+        { transform: this.slideTransform(slide, to - slide.sign * slide.distanceHost) },
+      ],
+      options,
+    );
+    slide.animations = [overlayAnim, canvasAnim];
+
+    void Promise.all([overlayAnim.finished, canvasAnim.finished])
+      .catch(() => undefined)
+      .then(() => {
+        if (this.userSlide !== slide) return;
+        this.finishUserSlide(commit);
+      });
+  }
+
+  private finishUserSlide(commit: boolean): void {
+    const slide = this.userSlide;
+    if (slide === null) return;
+    this.userSlide = null;
+    for (const animation of slide.animations) animation.cancel();
+    if (!commit) {
+      this.suppressSync = true;
+      this.turnToPage(slide.originIndex);
+    }
+    slide.overlay.remove();
+    slide.canvas.style.transform = '';
+    this.suppressSync = false;
+    const settled = commit ? slide.targetRendered : slide.originRendered;
+    if (commit) {
+      const rendered = this.instance?.getCurrentPageIndex();
+      if (rendered !== undefined) this.syncPageIndex(rendered);
+    }
+    this.stopSlideSurround(settled);
+    this._turning.set(false);
+  }
+
+  /** Forget an in-flight slide without touching the bookshelf. The mount is going away. */
+  private dropUserSlide(): void {
+    const slide = this.userSlide;
+    if (slide === null) return;
+    this.userSlide = null;
+    for (const animation of slide.animations) animation.cancel();
+    slide.overlay.remove();
+    slide.canvas.style.transform = '';
+    this.suppressSync = false;
+    this.stopSlideSurround(null);
+    this._turning.set(false);
   }
 
   /** Abort an in-flight slide and restore the canvas transform. */
@@ -571,10 +936,48 @@ export class BookFlipService {
 
   /** Keep BookstoreService in sync so magnifier / progress track the visible page. */
   private syncPageIndex(index: number): void {
+    if (this.suppressSync) return;
     const logicalIndex = this.logicalIndexByRenderedIndex[index] ?? index;
     this._currentIndex.set(logicalIndex);
     this.bookstore.goTo(logicalIndex);
     this.ensureSurround(index);
+    this.updatePageFrame(index);
+  }
+
+  /**
+   * Record the current page's draw rect. Portrait (and a lone right-hand
+   * leaf) is painted one page-width to the right of `bounds.left`; the left
+   * leaf of a landscape spread is painted at `bounds.left`.
+   */
+  private updatePageFrame(renderedIndex: number): void {
+    const instance = this.instance;
+    if (instance === null) {
+      this._pageFrame.set(null);
+      return;
+    }
+    const rect = instance.getBoundsRect();
+    const dpr = this.mountDpr;
+    const onRight = this.drawnOnRight(renderedIndex);
+    const x = (onRight ? rect.left + rect.pageWidth : rect.left) / dpr;
+    this._pageFrame.set({
+      x,
+      y: rect.top / dpr,
+      width: rect.pageWidth / dpr,
+      height: rect.height / dpr,
+    });
+  }
+
+  /** True when this rendered page is the one page-flip paints in the right slot. */
+  private drawnOnRight(renderedIndex: number): boolean {
+    const instance = this.instance;
+    if (instance === null) return true;
+    if (instance.getOrientation() === 'portrait') return true;
+    const collection = instance.getPageCollection();
+    const spreadIndex = collection.getSpreadIndexByPage(renderedIndex);
+    const spread = spreadIndex === null ? undefined : collection.getSpread()[spreadIndex];
+    if (spread !== undefined && spread.length >= 2) return spread[1] === renderedIndex;
+    // A single landscape leaf is on the right, except the book's last page.
+    return renderedIndex !== instance.getPageCount() - 1;
   }
 
   /** Logical pages of the spread that contains `renderedIndex`. */
@@ -594,6 +997,12 @@ export class BookFlipService {
    * the fallback grey.
    */
   private applySurround(renderedIndex: number): void {
+    const color = this.colorForRendered(renderedIndex);
+    if (color !== null) this._surroundColor.set(color);
+  }
+
+  /** Margin color of the spread containing `renderedIndex`, or null while it is still loading. */
+  private colorForRendered(renderedIndex: number): string | null {
     let pending = false;
     const known: string[] = [];
     for (const index of this.spreadLogicalIndices(renderedIndex)) {
@@ -605,11 +1014,9 @@ export class BookFlipService {
       const color = this.edgeColors.get(url);
       if (color !== undefined && color !== null) known.push(color);
     }
-    if (known.length > 0) {
-      this._surroundColor.set(blendEdgeColors(known));
-      return;
-    }
-    if (!pending) this._surroundColor.set(SURROUND_FALLBACK);
+    if (known.length > 0) return blendEdgeColors(known);
+    if (!pending) return SURROUND_FALLBACK;
+    return null;
   }
 
   /**
@@ -617,18 +1024,148 @@ export class BookFlipService {
    * cached yet (an enhanced derivative that arrived after the first probe).
    */
   private ensureSurround(renderedIndex: number): void {
+    this.applySurround(renderedIndex);
+    this.warmSurround(renderedIndex);
+  }
+
+  /** Sample missing margin colors without painting them. A curl in progress paints its own blend. */
+  private warmSurround(renderedIndex: number): void {
     const missing = this.spreadLogicalIndices(renderedIndex).flatMap((index) => {
       const url = this.logicalUrls[index];
       return url !== undefined && !this.edgeColors.has(url) ? [url] : [];
     });
-    this.applySurround(renderedIndex);
     if (missing.length === 0) return;
 
     const generation = this.mountGeneration;
     void Promise.all(missing.map((url) => this.sampleUrl(url))).then(() => {
       if (generation !== this.mountGeneration || this.instance === null) return;
+      // A curl or a slide is painting its own blend. The next frame picks up
+      // the sample; painting the resting page here would snap the letterbox.
+      if (this.trackFrame !== null || this.slideColor !== null) return;
       this.applySurround(this.instance.getCurrentPageIndex());
     });
+  }
+
+  /** Follow the curl: blend the resting margin into the page being revealed. */
+  private startFlipTrack(): void {
+    if (this.trackFrame !== null) return;
+    this.prefetchFlipTarget();
+    const tick = (): void => {
+      const state = this._flipState();
+      if (state !== 'user_fold' && state !== 'fold_corner' && state !== 'flipping') {
+        this.trackFrame = null;
+        return;
+      }
+      this.trackFlipColor();
+      this.trackFrame = requestAnimationFrame(tick);
+    };
+    this.trackFrame = requestAnimationFrame(tick);
+  }
+
+  /** Sample the page under the fold so its color is ready before the leaf lands. */
+  private prefetchFlipTarget(): void {
+    const instance = this.instance;
+    if (instance === null) return;
+    const rendered = instance.getCurrentPageIndex();
+    const calc = instance.getFlipController().getCalculation();
+    if (calc === null) return;
+    const direction = calc.getDirection() === 1 ? 'prev' : 'next';
+    const target = this.neighborRendered(rendered, direction);
+    if (target !== null) this.warmSurround(target);
+  }
+
+  private trackFlipColor(): void {
+    const instance = this.instance;
+    if (instance === null) return;
+    const calc = instance.getFlipController().getCalculation();
+    if (calc === null) return;
+
+    const rendered = instance.getCurrentPageIndex();
+    const from = this.colorForRendered(rendered);
+    if (from === null) return;
+
+    const raw = calc.getFlippingProgress();
+    const progress = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw / 100)) : 0;
+    const direction = calc.getDirection() === 1 ? 'prev' : 'next';
+    const target = this.neighborRendered(rendered, direction);
+    const to = target === null ? null : this.colorForRendered(target);
+    this._surroundColor.set(to === null || progress <= 0 ? from : mixHex(from, to, progress));
+  }
+
+  /**
+   * Blend the letterbox from the outgoing page toward the incoming one.
+   * `progress` follows the slide (finger or the settle animation), 0 to 1.
+   */
+  private trackSlideSurround(
+    originRendered: number,
+    targetRendered: number,
+    progress: () => number,
+  ): void {
+    this.slideColor = { originRendered, targetRendered, progress };
+    this._surroundLive.set(true);
+    this.paintSlideSurround(originRendered, targetRendered, progress());
+    this.warmSurround(targetRendered);
+    const tick = (): void => {
+      const job = this.slideColor;
+      if (job === null) {
+        this.slideColorFrame = null;
+        return;
+      }
+      this.paintSlideSurround(job.originRendered, job.targetRendered, job.progress());
+      this.slideColorFrame = requestAnimationFrame(tick);
+    };
+    if (this.slideColorFrame === null) this.slideColorFrame = requestAnimationFrame(tick);
+  }
+
+  private paintSlideSurround(originRendered: number, targetRendered: number, progress: number): void {
+    const from = this.colorForRendered(originRendered);
+    if (from === null) return;
+    const to = this.colorForRendered(targetRendered);
+    const t = Math.min(1, Math.max(0, progress));
+    this._surroundColor.set(to === null || t <= 0 ? from : mixHex(from, to, t));
+  }
+
+  /**
+   * The slide has landed. Paint the resting page while the per-frame lock is
+   * still on, then release it a frame later so the CSS fade does not replay
+   * the last step.
+   */
+  private stopSlideSurround(settledRendered: number | null): void {
+    this.slideColor = null;
+    if (this.slideColorFrame !== null) {
+      cancelAnimationFrame(this.slideColorFrame);
+      this.slideColorFrame = null;
+    }
+    if (settledRendered !== null) this.applySurround(settledRendered);
+    if (!this._surroundLive()) return;
+    requestAnimationFrame(() => {
+      if (this.slideColor === null) this._surroundLive.set(false);
+    });
+  }
+
+  /** The leaf has landed or the fold was cancelled. Paint the page now on screen. */
+  private settleSurround(): void {
+    this.cancelFlipTrack();
+    const index = this.instance?.getCurrentPageIndex();
+    if (index !== undefined) this.applySurround(index);
+  }
+
+  private cancelFlipTrack(): void {
+    if (this.trackFrame === null) return;
+    cancelAnimationFrame(this.trackFrame);
+    this.trackFrame = null;
+  }
+
+  /** Rendered index of the neighbouring spread, or null at either end of the book. */
+  private neighborRendered(rendered: number, direction: 'next' | 'prev'): number | null {
+    const collection = this.instance?.getPageCollection();
+    if (collection === undefined) return null;
+    const spreadIndex = collection.getSpreadIndexByPage(rendered);
+    if (spreadIndex === null) return null;
+    const spreads = collection.getSpread();
+    const target = direction === 'next' ? spreadIndex + 1 : spreadIndex - 1;
+    if (target < 0 || target >= spreads.length) return null;
+    return spreads[target][0];
   }
 
   private rememberEdge(url: string, loaded: LoadedImage): void {
@@ -749,10 +1286,6 @@ export function computePageDimensions(
   let pageH = pageContainerH;
 
   switch (zoom) {
-    case 'actual-size':
-      pageW = iw;
-      pageH = ih;
-      break;
     case 'fit-width':
       pageW = pageContainerW;
       pageH = pageContainerW / aspect;
@@ -761,25 +1294,13 @@ export function computePageDimensions(
       pageH = pageContainerH;
       pageW = pageContainerH * aspect;
       break;
-    case 'fit-screen': {
+    case 'fit-screen':
+    default: {
       const scale = Math.min(pageContainerW / iw, pageContainerH / ih);
       pageW = iw * scale;
       pageH = ih * scale;
       break;
     }
-    case 'cover': {
-      const scale = Math.max(pageContainerW / iw, pageContainerH / ih);
-      pageW = iw * scale;
-      pageH = ih * scale;
-      break;
-    }
-    case 'fixed-size':
-      // Numeric picker is out of v1 scope — treat as fit-screen.
-    case 'stretch-to-fill':
-    default:
-      pageW = pageContainerW;
-      pageH = pageContainerH;
-      break;
   }
 
   return {

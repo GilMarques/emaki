@@ -5,6 +5,17 @@ ion-modal.reader-sheet {
   --box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45);
 }
 
+/* Loupe tracks the pointer. The sheet must not take that drag, including the
+   handle. The page keeps events so the loupe can follow the finger. */
+ion-modal.reader-sheet.magnifier-active,
+ion-modal.reader-sheet.magnifier-active::part(content) {
+  pointer-events: none;
+}
+
+ion-modal.reader-sheet.magnifier-active ov-viewer {
+  pointer-events: auto;
+}
+
 ion-modal.reader-sheet::part(handle) {
   width: 25%;
   /* Keep the swipe handle clear of the status bar on edge-to-edge Android. */

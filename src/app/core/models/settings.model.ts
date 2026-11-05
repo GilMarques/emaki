@@ -17,35 +17,68 @@ export type ScreenOrientation =
   | 'portrait'
   | 'landscape'
   | 'portrait-inverted'
-  | 'landscape-inverted'
-  | 'default';
+  | 'landscape-inverted';
 
-export type PageLayout =
-  | 'default'
-  | 'auto-single'
-  | 'auto-dual'
-  | 'auto-switch';
+export type PageLayout = 'auto' | 'single' | 'dual';
+
+/**
+ * Accept the current values and the names this control used to store.
+ * `default` and `auto-switch` were the unimplemented "pick for me" entries.
+ */
+export function normalizePageLayout(value: unknown): PageLayout | null {
+  switch (value) {
+    case 'auto':
+    case 'auto-switch':
+    case 'default':
+      return 'auto';
+    case 'single':
+    case 'auto-single':
+      return 'single';
+    case 'dual':
+    case 'auto-dual':
+      return 'dual';
+    default:
+      return null;
+  }
+}
 
 export type InterfaceTheme = 'auto' | 'light' | 'dark';
 
 export type ViewerMode = 'paged' | 'vertical-scroll' | 'horizontal-scroll';
 
-/**
- * How the page image is sized to the viewport. Persisted across sessions.
- * 'fixed-size' is stored but the numeric picker is out of v1 scope (the
- * page-flip v1 renderer can't honor a custom px size without remounting
- * around the page's natural dimensions) — falls back to fit-screen.
- */
-export type ZoomMode =
-  | 'actual-size'
-  | 'fit-screen'
-  | 'fit-width'
-  | 'fit-height'
-  | 'fixed-size'
-  | 'stretch-to-fill'
-  | 'cover';
+export type PageTransition = 'page-curl' | 'slide-horizontal' | 'slide-vertical';
 
-export type PageTransition = 'none' | 'slide-horizontal' | 'slide-vertical' | 'page-curl';
+/** Page mode curls, vertical scroll slides up and down, horizontal scroll slides sideways. */
+export function transitionForMode(mode: ViewerMode): PageTransition {
+  switch (mode) {
+    case 'vertical-scroll':
+      return 'slide-vertical';
+    case 'horizontal-scroll':
+      return 'slide-horizontal';
+    case 'paged':
+      return 'page-curl';
+  }
+}
+
+/** How the page image is sized to the viewport. Persisted across sessions. */
+export type ZoomMode = 'fit-screen' | 'fit-width' | 'fit-height';
+
+/** Old zoom values that are no longer offered. They load as fit to screen. */
+export function normalizeZoom(value: unknown): ZoomMode | null {
+  switch (value) {
+    case 'fit-screen':
+    case 'fit-width':
+    case 'fit-height':
+      return value;
+    case 'actual-size':
+    case 'fixed-size':
+    case 'stretch-to-fill':
+    case 'cover':
+      return 'fit-screen';
+    default:
+      return null;
+  }
+}
 
 /**
  * Sampling method for image upscaling/downscaling.
@@ -85,7 +118,6 @@ export interface DisplaySettings {
   readonly pageLayout: PageLayout;
   readonly interfaceTheme: InterfaceTheme;
   readonly viewerMode: ViewerMode;
-  readonly pageTransition: PageTransition;
   readonly zoom: ZoomMode;
   /** Magnifier loupe zoom factor. 1 = no magnification. Default 2.5.
    *  Edited from the Preferences page; the viewer reads it live. */
@@ -114,10 +146,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   display: {
     readingDirection: 'ltr',
     screenOrientation: 'auto',
-    pageLayout: 'default',
+    pageLayout: 'auto',
     interfaceTheme: 'light',
     viewerMode: 'paged',
-    pageTransition: 'page-curl',
     zoom: 'fit-screen',
     magnifierZoom: 2.5,
     keepAwake: false,

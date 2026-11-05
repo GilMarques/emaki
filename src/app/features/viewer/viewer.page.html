@@ -3,6 +3,7 @@
     #stage
     class="stage"
     [style.background]="viewerBackground()"
+    [style.transition]="surroundTracksFlip() ? 'none' : null"
     [style.filter]="canvasFilter()"
     [style.image-rendering]="imageRendering()"
     (pointerdown)="onStagePointerDown($event)"
@@ -54,6 +55,7 @@
     [naturalWidth]="naturalSize()?.width ?? 0"
     [naturalHeight]="naturalSize()?.height ?? 0"
     [zoom]="magnifierZoom()"
+    [background]="viewerBackground()"
   />
 
   <!-- Comparison aid: flip between the enhanced scans and the originals to

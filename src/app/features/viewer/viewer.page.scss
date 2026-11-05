@@ -34,7 +34,8 @@ ion-content::part(scroll) {
   touch-action: none;
   /* Letterbox. The page canvas is transparent outside the page, so this
      color — sampled from the page margin — fills the unused renderer space.
-     The transition covers a page turn without a hard flash. */
+     A page turn drives the color from the curl or the slide itself. This fade
+     only covers a sample that arrives while the book is sitting still. */
   background: #555;
   transition: background-color 180ms ease;
 }

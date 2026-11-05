@@ -10,12 +10,13 @@ import {
   effect,
   inject,
   input,
+  signal,
   viewChild,
 } from '@angular/core';
 import { BookFlipService } from '../../core/services/book-flip.service';
 import { SettingsService } from '../../core/services/settings.service';
 import type { Book } from '../../core/models/book.model';
-import type { PageLayout, PageTransition, ZoomMode } from '../../core/models/settings.model';
+import { transitionForMode, type ZoomMode } from '../../core/models/settings.model';
 
 /**
  * Host for a page-flip instance. Mounts the lib on its element ref and
@@ -57,16 +58,28 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
   private readonly settings = inject(SettingsService);
   private readonly zone = inject(NgZone);
 
+  /** Device viewport is landscape. Auto uses this, not the stage box. */
+  private readonly deviceLandscape = signal(readDeviceLandscape());
+  private orientationQuery?: MediaQueryList;
+  private readonly onOrientation = (): void => {
+    this.zone.run(() => this.deviceLandscape.set(readDeviceLandscape()));
+  };
+
+  /**
+   * Single is one leaf. Dual is a spread. Auto follows the device: one page
+   * in portrait, a spread in landscape.
+   */
   public readonly layout = computed<'single' | 'double'>(() => {
-    const layout: PageLayout = this.settings.settings().display.pageLayout;
-    if (layout === 'auto-dual') return 'double';
-    return 'single';
+    const mode = this.settings.settings().display.pageLayout;
+    if (mode === 'dual') return 'double';
+    if (mode === 'single') return 'single';
+    return this.deviceLandscape() ? 'double' : 'single';
   });
 
   public readonly zoom = computed<ZoomMode>(() => this.settings.settings().display.zoom);
 
-  public readonly transition = computed<PageTransition>(
-    () => this.settings.settings().display.pageTransition,
+  public readonly transition = computed(() =>
+    transitionForMode(this.settings.settings().display.viewerMode),
   );
 
   private resizeObserver?: ResizeObserver;
@@ -93,16 +106,23 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
       // scaled box back into the mount key and loop.
       this.resizeObserver.observe(ref.nativeElement.parentElement ?? ref.nativeElement);
     }
+    if (typeof window !== 'undefined') {
+      this.orientationQuery = window.matchMedia('(orientation: landscape)');
+      this.orientationQuery.addEventListener('change', this.onOrientation);
+      this.deviceLandscape.set(this.orientationQuery.matches);
+    }
     this.tryMount();
   }
 
   public ngOnDestroy(): void {
+    this.orientationQuery?.removeEventListener('change', this.onOrientation);
     this.resizeObserver?.disconnect();
     this.flip.unmount();
   }
 
   @HostListener('window:resize')
   public onResize(): void {
+    this.deviceLandscape.set(readDeviceLandscape());
     this.flip.update();
   }
 
@@ -127,4 +147,10 @@ export class BookSpreadComponent implements AfterViewInit, OnDestroy {
     this.mountedKey = key;
     this.flip.mount(el, book, layout, zoom, transition);
   }
+}
+
+/** Viewport orientation. Portrait includes a square window. */
+function readDeviceLandscape(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(orientation: landscape)').matches;
 }

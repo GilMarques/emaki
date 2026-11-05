@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   IonApp,
@@ -24,7 +32,9 @@ import type { TaskProgress } from './core/tasks/task-manager.model';
 import { TaskManagerService } from './core/tasks/task-manager.service';
 import { LogService } from './core/services/log.service';
 import { SettingsService } from './core/services/settings.service';
+import { BookFlipService } from './core/services/book-flip.service';
 import { BookstoreService } from './core/services/bookstore.service';
+import { MagnifierStateService } from './core/services/magnifier-state.service';
 import { MenuStateService } from './core/services/menu-state.service';
 import { MegaAccountService } from './core/sync/mega-account.service';
 import { ViewerPage } from './features/viewer/viewer.page';
@@ -114,6 +124,14 @@ export class AppComponent {
   /** Drives the reader overlay — true whenever a book is open. */
   public readonly isReaderOpen = computed(() => this.bookstore.state().book !== null);
 
+  /** Loupe is up. The reader sheet must not drag while it is. */
+  public readonly magnifierActive = inject(MagnifierStateService).active;
+
+  private readonly flip = inject(BookFlipService);
+
+  /** The reader sheet. Its swipe gesture is not a public input. */
+  private readonly readerSheet = viewChild<ElementRef<ReaderSheetElement>>('readerSheet');
+
   /**
    * The sidebar's sync shortcut, on the drawer layout.
    *
@@ -156,7 +174,23 @@ export class AppComponent {
     effect(() => {
       applyTheme(this.settings.settings().display.interfaceTheme);
     });
+
+    // The sheet gesture is already listening by the time a page turn or the
+    // loupe starts (that press is the drag). pointer-events does not cancel
+    // that listener; turning the gesture off does, and snaps a partial drag
+    // back to the open breakpoint. It stays off until the page has settled.
+    effect(() => {
+      const modal = this.readerSheet()?.nativeElement;
+      const gesture = modal?.gesture;
+      if (gesture === undefined || typeof gesture.enable !== 'function') return;
+      gesture.enable(!this.magnifierActive() && !this.flip.pageTurning());
+    });
   }
+}
+
+/** ion-modal instance fields the sheet gesture hangs off. Not a public input. */
+interface ReaderSheetElement extends HTMLElement {
+  gesture?: { enable?: (enabled?: boolean) => void };
 }
 
 /**
