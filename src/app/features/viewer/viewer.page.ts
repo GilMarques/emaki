@@ -530,9 +530,9 @@ export class ViewerPage {
     });
   }
 
+  /** Scroll zooms the page around the cursor. No modifier key. */
   @HostListener('wheel', ['$event'])
   public onWheel(event: WheelEvent): void {
-    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
 
     const stage = this.stageRef()?.nativeElement;
@@ -543,6 +543,19 @@ export class ViewerPage {
   }
 
   /**
+   * Smallest zoom that still shows the whole page. The mounted fit is 1.
+   * A page already larger than the stage may zoom out until it just fits,
+   * and no further — past that the page floats in empty space.
+   */
+  private minVisibleZoom(): number {
+    const stage = this.hostRect();
+    const page = this.renderedPageSize();
+    if (stage === null || page === null || page.width <= 0 || page.height <= 0) return 1;
+    const fit = Math.min(stage.width / page.width, stage.height / page.height);
+    return Math.min(1, fit);
+  }
+
+  /**
    * Zoom to an absolute factor around a stage-anchored point (CSS px, origin
    * at the stage's top-left). The page point under the anchor stays put while
    * the page scales, then the pan offset is clamped to the new page bounds.
@@ -550,9 +563,11 @@ export class ViewerPage {
   private applyZoomAround(target: number, anchorX: number, anchorY: number): void {
     const oldZoom = this.bookstore.zoom();
     if (oldZoom <= 0) return;
-    const factor = target / oldZoom;
+    const minZoom = this.minVisibleZoom();
+    const clamped = Math.min(4, Math.max(minZoom, target));
+    const factor = clamped / oldZoom;
     if (!Number.isFinite(factor) || factor <= 0) return;
-    this.bookstore.setZoom(factor);
+    this.bookstore.setZoom(factor, minZoom);
     const newZoom = this.bookstore.zoom();
     if (newZoom === oldZoom) return; // already at a bound
 

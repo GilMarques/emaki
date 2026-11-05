@@ -118,9 +118,8 @@ export class BookstoreService {
     this.history.record(s.book, clamped);
   }
 
-  /** Zoom factor applied to the rendered page quad. 1 = fit-screen.
-   *  Reset on book open. Driven by the viewer's two-finger pinch and by
-   *  Ctrl/Cmd+wheel (scroll wheel or trackpad pinch). */
+  /** Zoom factor applied to the rendered page quad. 1 = the mounted fit.
+   *  Reset on book open. Driven by the viewer's pinch and scroll wheel. */
   private readonly _zoom = signal(1);
   public readonly zoom = this._zoom.asReadonly();
 
@@ -131,12 +130,14 @@ export class BookstoreService {
   public readonly cornersVisible = computed(() => Math.abs(this._zoom() - 1) < 0.05);
 
   /** Apply a multiplicative zoom factor (e.g. wheel delta → 1.1 / 0.9).
-   *  Clamped to [0.2, 4] — you can zoom out far past the page bounds
-   *  (grey surround) and in up to 4×. No-op on books that aren't open. */
-  public setZoom(factor: number): void {
+   *  Clamped to [`min`, 4]. `min` is the scale where the whole page still
+   *  fits; zooming out further would leave it floating in empty space.
+   *  No-op on books that aren't open. */
+  public setZoom(factor: number, min = 1): void {
     if (this._state().book === null) return;
     if (!Number.isFinite(factor) || factor <= 0) return;
-    const next = Math.min(4, Math.max(0.2, this._zoom() * factor));
+    const floor = Number.isFinite(min) && min > 0 ? min : 1;
+    const next = Math.min(4, Math.max(floor, this._zoom() * factor));
     this._zoom.set(next);
   }
 
