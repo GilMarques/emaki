@@ -757,9 +757,9 @@ export class ViewerPage {
     }
 
     if (this.magnifierState.relayFlip()) {
-      // Release: the patched lib completes the fold from its current position
-      // (stopMove commits whenever state is USER_FOLD) at any zoom — relay
-      // coordinates are unscaled by toBookPoint.
+      // Release finishes the turn unless the last movement pulled the page
+      // back. Stopping counts as the drag that got it there. A pull back
+      // has to pass a small tolerance before it cancels.
       this.flip.relayPointerUp(this.clampToPageX(event.clientX), event.clientY);
     } else if (!this.magnifierState.active() && !wasPan && this.isQuickTap(event)) {
       if (this.isBottomZoneTap(event.clientY)) {
@@ -1028,7 +1028,8 @@ export class ViewerPage {
 
   /**
    * Start the interactive curl: hand the pointer off to page-flip's fold
-   * (USER_FOLD) so the page follows the finger. The turn commits on release.
+   * (USER_FOLD) so the page follows the finger. Releasing commits unless the
+   * last movement pulled the page back past a small tolerance.
    */
   private beginFlipRelay(x?: number, y?: number): void {
     this.clearHoldTimer();
