@@ -1,9 +1,16 @@
 import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 
-import { PageFlip, type FlipSetting } from '../../vendor/page-flip';
+import {
+  PageFlip,
+  clearPageBackdrops,
+  setPageBackdrop,
+  setPageFit,
+  type FlipSetting,
+} from '../../vendor/page-flip';
 
 import type { Book, Page } from '../models/book.model';
 import type { PageTransition, ZoomMode } from '../models/settings.model';
+import { containedImageRect } from './page-fit';
 import { BookstoreService } from './bookstore.service';
 import { FilePageService } from './file-page.service';
 import { SURROUND_FALLBACK, blendEdgeColors, mixHex, sampleEdgeColor } from './page-edge-color';
@@ -24,6 +31,7 @@ type LoadedImage = {
 };
 type RenderedPages = {
   readonly urls: readonly string[];
+  readonly naturals: readonly NaturalSize[];
   readonly logicalIndexByRenderedIndex: readonly number[];
   readonly renderedIndexByLogicalIndex: readonly number[];
 };
@@ -184,6 +192,12 @@ export class BookFlipService {
   /** Device pixel ratio the current mount was laid out at. Bounds are in those px. */
   private mountDpr = 1;
 
+  /** Fit used when this mount placed each bitmap inside its leaf. */
+  private mountZoom: ZoomMode = 'fit-screen';
+
+  /** Natural size of each rendered bitmap, parallel to the loaded page urls. */
+  private renderedNaturals: readonly NaturalSize[] = [];
+
   /**
    * CSS px to add to the lib's page rect. Single-page curl widens the canvas
    * by a page on each side and shifts it back, so the visible leaf stays put.
@@ -208,6 +222,7 @@ export class BookFlipService {
     const baseIndex = sameBook ? this._currentIndex() : state.book === null ? 0 : state.currentIndex;
     const pageIndex = Math.max(0, Math.min(baseIndex, book.pages.length - 1));
     this.mountedBookId = book.id;
+    this.mountZoom = zoom;
     // Resolve each page to a loadable URL (web URL, or blob/asset URL for a real
     // filesystem book) — `page.url` alone is a raw fs path the canvas can't load.
     // Warm the blobs BEFORE page-flip mounts so it never receives a raw on-disk
@@ -279,13 +294,27 @@ export class BookFlipService {
         const containerW = size.w;
         const containerH = size.h;
 
-      const natural = loadedImages[0]?.natural ?? { width: 800, height: 1200 };
-      // Device-pixel page size: the lib lays out in host px, which are now
-      // device px, so pages rasterize at the screen's real resolution.
-      const pageSize = computePageDimensions(containerW, containerH, natural, zoom, layout);
-      const rendered = buildRenderedPages(book.pages, pageUrls, loadedImages, layout, pageSize);
+      // The leaf is the screen (or half of it, in a spread), in device px.
+      // The bitmap is placed inside that leaf; it does not define the leaf.
+      const pageSize = computePageDimensions(containerW, containerH, layout);
+      const colorFor = (index: number): string =>
+        this.edgeColors.get(pageUrls[index] ?? '') ?? SURROUND_FALLBACK;
+      const rendered = buildRenderedPages(
+        book.pages,
+        pageUrls,
+        loadedImages,
+        layout,
+        pageSize,
+        colorFor,
+      );
       this.logicalIndexByRenderedIndex = rendered.logicalIndexByRenderedIndex;
       this.renderedIndexByLogicalIndex = rendered.renderedIndexByLogicalIndex;
+      this.renderedNaturals = rendered.naturals;
+      clearPageBackdrops();
+      setPageFit(zoom);
+      for (const [index, url] of rendered.urls.entries()) {
+        setPageBackdrop(url, colorFor(rendered.logicalIndexByRenderedIndex[index] ?? 0));
+      }
       // Viewer geometry (pan extents, magnifier, page rects) is CSS px.
       this._bookPageSize.set({ width: pageSize.width / dpr, height: pageSize.height / dpr });
 
@@ -368,8 +397,10 @@ export class BookFlipService {
     this._bookPageSize.set(null);
     this._pageFrame.set(null);
     this.frameShiftX = 0;
+    this.renderedNaturals = [];
     this.logicalIndexByRenderedIndex = [];
     this.renderedIndexByLogicalIndex = [];
+    clearPageBackdrops();
     if (this.instance === null) return;
     try {
       // Do NOT call PageFlip.destroy() — it removes the host from the DOM.
@@ -991,9 +1022,8 @@ export class BookFlipService {
   }
 
   /**
-   * Record the current page's draw rect. Portrait (and a lone right-hand
-   * leaf) is painted one page-width to the right of `bounds.left`; the left
-   * leaf of a landscape spread is painted at `bounds.left`.
+   * Record where the current bitmap sits inside its leaf. The leaf is the
+   * screen (or one half of a spread); the image is fitted inside it.
    */
   private updatePageFrame(renderedIndex: number): void {
     const instance = this.instance;
@@ -1004,12 +1034,20 @@ export class BookFlipService {
     const rect = instance.getBoundsRect();
     const dpr = this.mountDpr;
     const onRight = this.drawnOnRight(renderedIndex);
-    const x = (onRight ? rect.left + rect.pageWidth : rect.left) / dpr + this.frameShiftX;
+    const leafX = (onRight ? rect.left + rect.pageWidth : rect.left) / dpr + this.frameShiftX;
+    const leafY = rect.top / dpr;
+    const leafW = rect.pageWidth / dpr;
+    const leafH = rect.height / dpr;
+    const natural = this.renderedNaturals[renderedIndex];
+    const fitted =
+      natural === undefined
+        ? { x: 0, y: 0, width: leafW, height: leafH }
+        : containedImageRect(leafW, leafH, natural.width, natural.height, this.mountZoom);
     this._pageFrame.set({
-      x,
-      y: rect.top / dpr,
-      width: rect.pageWidth / dpr,
-      height: rect.height / dpr,
+      x: leafX + fitted.x,
+      y: leafY + fitted.y,
+      width: fitted.width,
+      height: fitted.height,
     });
   }
 
@@ -1226,6 +1264,7 @@ export class BookFlipService {
         ? null
         : sampleEdgeColor(loaded.image, loaded.natural.width, loaded.natural.height);
     this.edgeColors.set(url, color);
+    setPageBackdrop(url, color ?? SURROUND_FALLBACK);
   }
 
   private async sampleUrl(url: string): Promise<void> {
@@ -1242,52 +1281,66 @@ function buildRenderedPages(
   loadedImages: readonly LoadedImage[],
   layout: 'single' | 'double',
   pageSize: { readonly width: number; readonly height: number },
+  colorFor: (logicalIndex: number) => string,
 ): RenderedPages {
   const urls: string[] = [];
+  const naturals: NaturalSize[] = [];
   const logicalIndexByRenderedIndex: number[] = [];
   const renderedIndexByLogicalIndex: number[] = [];
   let pagesSinceCover = 0;
 
-  for (const [logicalIndex, page] of pages.entries()) {
+  const pushOriginal = (logicalIndex: number): void => {
+    renderedIndexByLogicalIndex.push(urls.length);
+    urls.push(pageUrls[logicalIndex] ?? '');
+    naturals.push(loadedImages[logicalIndex]?.natural ?? { width: 800, height: 1200 });
+    logicalIndexByRenderedIndex.push(logicalIndex);
+  };
+
+  for (const [logicalIndex] of pages.entries()) {
     const loaded = loadedImages[logicalIndex];
     const natural = loaded?.natural ?? { width: 800, height: 1200 };
     const spansTwoPages =
       layout === 'double' && logicalIndex > 0 && natural.width > natural.height && loaded?.image !== null;
 
     if (logicalIndex === 0) {
-      renderedIndexByLogicalIndex.push(urls.length);
-      urls.push(pageUrls[logicalIndex]);
-      logicalIndexByRenderedIndex.push(logicalIndex);
+      pushOriginal(logicalIndex);
       continue;
     }
 
     // Keep a landscape image at a spread boundary. The filler leaves the
     // preceding portrait page alone instead of pairing it with a half-page.
     if (spansTwoPages && pagesSinceCover % 2 === 1) {
-      urls.push(createBlankPageUrl(pageSize));
+      const color = colorFor(logicalIndex - 1);
+      urls.push(createBlankPageUrl(pageSize, color));
+      naturals.push({ width: pageSize.width, height: pageSize.height });
       logicalIndexByRenderedIndex.push(logicalIndex - 1);
       pagesSinceCover++;
     }
 
-    renderedIndexByLogicalIndex.push(urls.length);
-    if (spansTwoPages) {
-      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'left'));
+    if (spansTwoPages && loaded?.image !== null) {
+      const color = colorFor(logicalIndex);
+      renderedIndexByLogicalIndex.push(urls.length);
+      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'left', color));
+      naturals.push({ width: pageSize.width, height: pageSize.height });
       logicalIndexByRenderedIndex.push(logicalIndex);
-      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'right'));
+      urls.push(createLandscapeHalfUrl(loaded.image, natural, pageSize, 'right', color));
+      naturals.push({ width: pageSize.width, height: pageSize.height });
       logicalIndexByRenderedIndex.push(logicalIndex);
       pagesSinceCover += 2;
     } else {
-      urls.push(pageUrls[logicalIndex]);
-      logicalIndexByRenderedIndex.push(logicalIndex);
+      pushOriginal(logicalIndex);
       pagesSinceCover++;
     }
   }
 
-  return { urls, logicalIndexByRenderedIndex, renderedIndexByLogicalIndex };
+  return { urls, naturals, logicalIndexByRenderedIndex, renderedIndexByLogicalIndex };
 }
 
-function createBlankPageUrl(pageSize: { readonly width: number; readonly height: number }): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pageSize.width}" height="${pageSize.height}"><rect width="100%" height="100%" fill="white"/></svg>`;
+function createBlankPageUrl(
+  pageSize: { readonly width: number; readonly height: number },
+  color: string,
+): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pageSize.width}" height="${pageSize.height}"><rect width="100%" height="100%" fill="${color}"/></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
@@ -1296,6 +1349,7 @@ function createLandscapeHalfUrl(
   natural: NaturalSize,
   pageSize: { readonly width: number; readonly height: number },
   side: 'left' | 'right',
+  color: string,
 ): string {
   const pageWidth = Math.max(1, Math.round(pageSize.width));
   const pageHeight = Math.max(1, Math.round(pageSize.height));
@@ -1312,51 +1366,25 @@ function createLandscapeHalfUrl(
   const context = canvas.getContext('2d');
   if (context === null) return image.src;
 
-  context.fillStyle = 'white';
+  context.fillStyle = color;
   context.fillRect(0, 0, pageWidth, pageHeight);
   context.drawImage(image, imageX - viewX, imageY, imageWidth, imageHeight);
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
-/** Map Display > Zoom to page-flip page dimensions (per-page leaf size). */
+/**
+ * The leaf is the screen. A spread uses one half of it. The bitmap is fitted
+ * inside the leaf later, so a landscape scan is not squeezed into a portrait slot.
+ */
 export function computePageDimensions(
   containerW: number,
   containerH: number,
-  image: NaturalSize,
-  zoom: ZoomMode,
   layout: 'single' | 'double',
 ): { width: number; height: number } {
-  const pageContainerW = layout === 'double' ? containerW / 2 : containerW;
-  const pageContainerH = containerH;
-
-  const iw = image.width;
-  const ih = image.height;
-  const aspect = iw / ih;
-
-  let pageW = pageContainerW;
-  let pageH = pageContainerH;
-
-  switch (zoom) {
-    case 'fit-width':
-      pageW = pageContainerW;
-      pageH = pageContainerW / aspect;
-      break;
-    case 'fit-height':
-      pageH = pageContainerH;
-      pageW = pageContainerH * aspect;
-      break;
-    case 'fit-screen':
-    default: {
-      const scale = Math.min(pageContainerW / iw, pageContainerH / ih);
-      pageW = iw * scale;
-      pageH = ih * scale;
-      break;
-    }
-  }
-
+  const pageW = layout === 'double' ? containerW / 2 : containerW;
   return {
     width: Math.max(1, Math.round(pageW)),
-    height: Math.max(1, Math.round(pageH)),
+    height: Math.max(1, Math.round(containerH)),
   };
 }
 

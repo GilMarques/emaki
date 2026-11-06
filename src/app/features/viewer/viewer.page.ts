@@ -337,15 +337,15 @@ export class ViewerPage {
 
     effect(() => {
       const url = this.currentPageUrl();
-      if (url === null) {
-        this.naturalSize.set(null);
-        return;
-      }
+      this.naturalSize.set(null);
+      if (url === null) return;
       const img = new Image();
       img.onload = () => {
+        if (this.currentPageUrl() !== url) return;
         this.naturalSize.set({ width: img.naturalWidth, height: img.naturalHeight });
       };
       img.onerror = () => {
+        if (this.currentPageUrl() !== url) return;
         this.naturalSize.set(null);
       };
       img.src = url;
@@ -1004,17 +1004,11 @@ export class ViewerPage {
     if (overflowX <= 0) {
       return Math.abs(dx) >= ViewerPage.HORIZONTAL_SLOP_PX;
     }
-
-    const rtl = this.direction() === 'rtl';
-    if (rtl) {
-      if (this.atLeftEdge() && dx < -ViewerPage.HORIZONTAL_SLOP_PX) return true;
-      if (this.atRightEdge() && dx > ViewerPage.HORIZONTAL_SLOP_PX) return true;
-    } else {
-      if (this.atRightEdge() && dx < -ViewerPage.HORIZONTAL_SLOP_PX) return true;
-      if (this.atLeftEdge() && dx > ViewerPage.HORIZONTAL_SLOP_PX) return true;
-    }
-
-    return false;
+    if (Math.abs(dx) < ViewerPage.HORIZONTAL_SLOP_PX) return false;
+    // Same rule as a slide: the turn starts only once the drag has reached
+    // the far side of this page. A landscape spread uses that travel to show
+    // its other half first.
+    return this.horizontalEdgeReady(this.horizontalSlideDir(dx));
   }
 
   private atLeftEdge(): boolean {
@@ -1274,7 +1268,7 @@ export class ViewerPage {
    */
   private flipIntent(dx: number, clientX: number): 'fold' | null {
     if (Math.abs(dx) < ViewerPage.HORIZONTAL_SLOP_PX) return null;
-    if (this.bookstore.cornersVisible()) {
+    if (this.panExtents().overflowX > 0 || this.bookstore.cornersVisible()) {
       return this.shouldBeginFlipRelay(dx) ? 'fold' : null;
     }
     return this.zoomedFoldAvailable(clientX) ? 'fold' : null;

@@ -62,6 +62,12 @@ export interface FlipPageCollection {
   getCurrentPageIndex(): number;
 }
 
+/** How the bitmap is placed inside the screen-sized leaf. It is never cropped. */
+export function setPageFit(fit: 'fit-screen' | 'fit-width' | 'fit-height'): void;
+/** Margin color painted behind `src` before the image is drawn. */
+export function setPageBackdrop(src: string, color: string): void;
+export function clearPageBackdrops(): void;
+
 export class PageFlip {
   constructor(inBlock: HTMLElement, setting: Partial<FlipSetting>);
   on(event: string, callback: (e: FlipEvent) => void): void;
