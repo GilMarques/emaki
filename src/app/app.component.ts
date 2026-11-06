@@ -132,8 +132,11 @@ export class AppComponent {
 
   private readonly flip = inject(BookFlipService);
 
-  /** The reader sheet. Its swipe gesture is not a public input. */
-  private readonly readerSheet = viewChild<ElementRef<ReaderSheetElement>>('readerSheet');
+  /**
+   * The reader sheet host. `#readerSheet` is the IonModal component, which has
+   * no gesture — the gesture lives on the host element.
+   */
+  private readonly readerSheet = viewChild('readerSheet', { read: ElementRef });
 
   /**
    * The sidebar's sync shortcut, on the drawer layout.
@@ -182,11 +185,23 @@ export class AppComponent {
     // loupe starts (that press is the drag). pointer-events does not cancel
     // that listener; turning the gesture off does, and snaps a partial drag
     // back to the open breakpoint. It stays off until the page has settled.
-    effect(() => {
-      const modal = this.readerSheet()?.nativeElement;
+    //
+    // The lock is read before the gesture. The modal creates the gesture when
+    // it presents, so the first run often finds none — returning first would
+    // drop the subscription, and the viewer's enable(false) would never be
+    // undone after the first page.
+    effect((onCleanup) => {
+      const locked = this.magnifierActive() || this.flip.pageTurning();
+      const modal = this.readerSheet()?.nativeElement as ReaderSheetElement | undefined;
       const gesture = modal?.gesture;
       if (gesture === undefined || typeof gesture.enable !== 'function') return;
-      gesture.enable(!this.magnifierActive() && !this.flip.pageTurning());
+      gesture.enable(!locked);
+      if (!locked) return;
+      // Aborting a sheet drag that this press already started snaps the sheet
+      // back open and turns the gesture on again when that snap finishes.
+      // Put the lock back if the leaf is still moving.
+      const timer = window.setTimeout(() => gesture.enable?.(false), 600);
+      onCleanup(() => window.clearTimeout(timer));
     });
   }
 }
