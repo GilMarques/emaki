@@ -218,13 +218,8 @@
   ></ion-alert>
 
   <ion-modal
-    class="settings-sheet"
+    class="settings-modal"
     [isOpen]="settingsOpen()"
-    [breakpoints]="[0, 0.9]"
-    [initialBreakpoint]="0.9"
-    handle="visible"
-    swipeToClose="true"
-    [canDismiss]="true"
     (didDismiss)="settingsOpen.set(false)"
   >
     <ng-template>
@@ -235,15 +230,11 @@
               <ion-icon slot="icon-only" name="close"></ion-icon>
             </ion-button>
           </ion-buttons>
-          <ion-title class="ion-text-center">Display &amp; filters</ion-title>
-          <ion-buttons slot="end">
-            <ion-button class="done-btn" (click)="settingsOpen.set(false)" aria-label="Done">
-              <ion-icon slot="icon-only" name="checkmark"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-        </ion-toolbar>
-        <ion-toolbar class="sheet-tabs">
-          <ion-segment [value]="settingsTab()" (ionChange)="onSettingsTabChange($event)">
+          <ion-segment
+            class="settings-tabs"
+            [value]="settingsTab()"
+            (ionChange)="onSettingsTabChange($event)"
+          >
             <ion-segment-button value="display">
               <ion-label>Display</ion-label>
             </ion-segment-button>
@@ -251,6 +242,11 @@
               <ion-label>Filters</ion-label>
             </ion-segment-button>
           </ion-segment>
+          <ion-buttons slot="end">
+            <ion-button class="done-btn" (click)="settingsOpen.set(false)" aria-label="Done">
+              <ion-icon slot="icon-only" name="checkmark"></ion-icon>
+            </ion-button>
+          </ion-buttons>
         </ion-toolbar>
       </ion-header>
       <ion-content>

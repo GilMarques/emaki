@@ -129,9 +129,9 @@ export class BookshelfPage {
   public readonly scanning = this.scanner.scanning;
   public readonly booksFound = this.scanner.booksFound;
 
-  /** Combined Display + Filters sheet ("options" in the top bar). */
+  /** Combined Display + Filters popup ("options" in the top bar). */
   public readonly settingsOpen = signal(false);
-  /** Which half of the sheet is showing. */
+  /** Which half of the popup is showing. */
   public readonly settingsTab = signal<'display' | 'filters'>('display');
 
   /** Whether the search field is showing, and the current library query. */
@@ -352,7 +352,7 @@ export class BookshelfPage {
     this.query.set(detail?.value ?? '');
   }
 
-  /** Switch the sheet between Display and Filters. */
+  /** Switch the popup between Display and Filters. */
   public onSettingsTabChange(event: Event): void {
     const detail = (event as CustomEvent<{ value?: string | number | undefined }>).detail;
     this.settingsTab.set(detail?.value === 'filters' ? 'filters' : 'display');
