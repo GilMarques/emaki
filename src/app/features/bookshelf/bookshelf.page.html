@@ -223,39 +223,41 @@
     (didDismiss)="settingsOpen.set(false)"
   >
     <ng-template>
-      <ion-header>
-        <ion-toolbar>
-          <ion-buttons slot="start">
-            <ion-button (click)="settingsOpen.set(false)" aria-label="Close">
-              <ion-icon slot="icon-only" name="close"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-          <ion-segment
-            class="settings-tabs"
-            [value]="settingsTab()"
-            (ionChange)="onSettingsTabChange($event)"
-          >
-            <ion-segment-button value="display">
-              <ion-label>Display</ion-label>
-            </ion-segment-button>
-            <ion-segment-button value="filters">
-              <ion-label>Filters</ion-label>
-            </ion-segment-button>
-          </ion-segment>
-          <ion-buttons slot="end">
-            <ion-button class="done-btn" (click)="settingsOpen.set(false)" aria-label="Done">
-              <ion-icon slot="icon-only" name="checkmark"></ion-icon>
-            </ion-button>
-          </ion-buttons>
-        </ion-toolbar>
-      </ion-header>
-      <ion-content>
-        @if (settingsTab() === 'filters') {
-          <ov-filters-settings />
-        } @else {
-          <ov-display-settings />
-        }
-      </ion-content>
+      <div class="settings-sheet">
+        <ion-header class="settings-header">
+          <ion-toolbar>
+            <ion-buttons slot="start">
+              <ion-button (click)="settingsOpen.set(false)" aria-label="Close">
+                <ion-icon slot="icon-only" name="close"></ion-icon>
+              </ion-button>
+            </ion-buttons>
+            <ion-segment
+              class="settings-tabs"
+              [value]="settingsTab()"
+              (ionChange)="onSettingsTabChange($event)"
+            >
+              <ion-segment-button value="display">
+                <ion-label>Display</ion-label>
+              </ion-segment-button>
+              <ion-segment-button value="filters">
+                <ion-label>Filters</ion-label>
+              </ion-segment-button>
+            </ion-segment>
+            <ion-buttons slot="end">
+              <ion-button class="done-btn" (click)="settingsOpen.set(false)" aria-label="Done">
+                <ion-icon slot="icon-only" name="checkmark"></ion-icon>
+              </ion-button>
+            </ion-buttons>
+          </ion-toolbar>
+        </ion-header>
+        <div class="settings-body">
+          @if (settingsTab() === 'filters') {
+            <ov-filters-settings />
+          } @else {
+            <ov-display-settings />
+          }
+        </div>
+      </div>
     </ng-template>
   </ion-modal>
 

@@ -6,21 +6,13 @@ import {
 } from '@angular/core';
 import {
   IonIcon,
-  IonItem,
-  IonLabel,
   IonList,
-  IonNote,
   IonRange,
-  IonSelect,
-  IonSelectOption,
   IonToggle,
   type RangeChangeEventDetail,
 } from '@ionic/angular/standalone';
 
-import type {
-  FilterSettings,
-  ImageSmoothMethod,
-} from '../../core/models/settings.model';
+import type { FilterSettings } from '../../core/models/settings.model';
 import { FILTER_BOUNDS } from '../../core/models/settings.model';
 import { SettingsService } from '../../core/services/settings.service';
 
@@ -29,11 +21,6 @@ interface SliderRow {
   readonly label: string;
   readonly suffix: string;
   readonly icon: string;
-}
-
-interface SmoothOption {
-  readonly value: ImageSmoothMethod;
-  readonly label: string;
 }
 
 /** One row per slider filter. Keep the order = the order the user sees them. */
@@ -46,136 +33,199 @@ const SLIDER_ROWS: readonly SliderRow[] = [
 ];
 
 /**
- * Only the two methods the renderer can actually apply. Everything else in the
- * enum used to render identically to 'none' (CSS `image-rendering` has no
- * kernel selector), which just made the picker look broken.
- */
-const SMOOTH_OPTIONS: readonly SmoothOption[] = [
-  { value: 'none', label: 'Smooth' },
-  { value: 'nearest-neighbor', label: 'Nearest neighbour' },
-];
-
-/**
- * Filters tab. Each row is either a (toggle, slider) pair or the image-smooth
- * toggle + sampling-method dropdown.
+ * Filters tab. On a normal screen each slider is two lines: icon, name, and
+ * toggle, then the track underneath. When the viewport is short, the track
+ * moves onto the same line so the dialog can stay content-sized without
+ * scrolling. Grayscale is a toggle with no slider.
  *
- * Disabled sliders drop to a lower opacity but stay visible so the user knows
- * the option exists. The toggle's state drives whether the filter is applied
- * to the canvas at all — value is preserved either way.
+ * When a toggle is off, the name and the slider (track and endpoint labels)
+ * dim. The toggle stays at full contrast. The value is preserved either way;
+ * the toggle only decides whether the filter is applied.
  */
 @Component({
   selector: 'ov-filters-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonIcon,
-    IonItem,
-    IonLabel,
-    IonList,
-    IonNote,
-    IonRange,
-    IonSelect,
-    IonSelectOption,
-    IonToggle,
-  ],
+  imports: [IonIcon, IonList, IonRange, IonToggle],
   template: `
     <ion-list lines="none" class="filters-list">
       @for (row of sliderRows; track row.key) {
-        <ion-item>
+        <div class="filter-unit" [class.is-off]="!getEnabled(row.key)">
           <ion-icon
+            class="filter-icon"
             aria-hidden="true"
-            slot="start"
             [ios]="row.icon + '-outline'"
             [md]="row.icon + '-sharp'"
           ></ion-icon>
+          <span class="filter-name">{{ row.label }}</span>
+          <div class="filter-slider">
+            <span class="endpoint">{{ bounds[row.key].min }}</span>
+            <ion-range
+              [min]="bounds[row.key].min"
+              [max]="bounds[row.key].max"
+              [step]="bounds[row.key].step"
+              [value]="getValue(row.key)"
+              (ionInput)="onSliderChange(row.key, $event)"
+              [disabled]="!getEnabled(row.key)"
+              [attr.aria-label]="row.label + ' slider'"
+            ></ion-range>
+            <span class="endpoint">{{ bounds[row.key].max }}</span>
+          </div>
           <ion-toggle
-            slot="end"
             [checked]="getEnabled(row.key)"
             (ionChange)="onToggleChange(row.key, $event)"
             [attr.aria-label]="'Enable ' + row.label"
           ></ion-toggle>
-          <ion-label>
-            <h3>{{ row.label }}</h3>
-          </ion-label>
-        </ion-item>
-        <ion-item class="slider-row" [class.is-disabled]="!getEnabled(row.key)">
-          <ion-range
-            pin="true"
-            [min]="bounds[row.key].min"
-            [max]="bounds[row.key].max"
-            [step]="bounds[row.key].step"
-            [value]="getValue(row.key)"
-            (ionInput)="onSliderChange(row.key, $event)"
-            [disabled]="!getEnabled(row.key)"
-            [attr.aria-label]="row.label + ' slider'"
-          >
-            <ion-note slot="start">{{ bounds[row.key].min }}</ion-note>
-            <ion-note slot="end">{{ bounds[row.key].max }}</ion-note>
-          </ion-range>
-        </ion-item>
+        </div>
       }
 
-      <ion-item>
+      <div class="filter-unit filter-toggle-only">
         <ion-icon
+          class="filter-icon"
           aria-hidden="true"
-          slot="start"
-          ios="resize-outline"
-          md="resize-sharp"
-        ></ion-icon>
-        <ion-select
-          label="Image rendering"
-          [value]="imageSmoothMethod()"
-          (ionChange)="onImageSmoothMethodChange($event)"
-          interface="popover"
-          aria-label="Image rendering method"
-          class="smooth-select"
-        >
-          @for (opt of smoothOptions; track opt.value) {
-            <ion-select-option [value]="opt.value">{{ opt.label }}</ion-select-option>
-          }
-        </ion-select>
-      </ion-item>
-
-      <ion-item>
-        <ion-icon
-          aria-hidden="true"
-          slot="start"
           ios="color-wand-outline"
           md="color-wand-sharp"
         ></ion-icon>
-        <ion-label>
-          <h3>Grayscale</h3>
-        </ion-label>
+        <span class="filter-name">Grayscale</span>
         <ion-toggle
-          slot="end"
           [checked]="grayscaleEnabled()"
           (ionChange)="onGrayscaleToggle($event)"
           aria-label="Enable grayscale"
         ></ion-toggle>
-      </ion-item>
+      </div>
     </ion-list>
   `,
   styles: [
     `
       .filters-list {
-        padding-top: 8px;
+        padding-top: 4px;
+        background: transparent;
       }
-      .slider-row {
-        --min-height: 32px;
-        padding-inline: 12px;
+      .filter-unit {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        grid-template-areas:
+          'icon name toggle'
+          'slider slider slider';
+        align-items: center;
+        column-gap: 12px;
+        row-gap: 2px;
+        min-height: 64px;
+        padding: 8px 16px 6px;
+        border-bottom: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.08));
       }
-      .slider-row.is-disabled {
-        opacity: 0.55;
+      .filter-toggle-only {
+        grid-template-areas: 'icon name toggle';
+        min-height: 48px;
+        padding-top: 6px;
+        padding-bottom: 6px;
       }
-      ion-item ion-icon[slot='start'] {
+      .filter-icon {
+        grid-area: icon;
         color: var(--ion-color-medium);
         font-size: 22px;
       }
-      .smooth-select {
-        min-width: 140px;
-      }
-      ion-select::part(label) {
+      .filter-name {
+        grid-area: name;
+        min-width: 0;
         font-size: 0.875rem;
+        line-height: 1.25;
+      }
+      ion-toggle {
+        grid-area: toggle;
+        justify-self: end;
+      }
+      .filter-slider {
+        grid-area: slider;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 24px;
+        margin-inline-start: 34px;
+      }
+      .endpoint {
+        flex: 0 0 auto;
+        min-width: 1.75rem;
+        font-size: 0.75rem;
+        color: var(--ion-color-medium);
+        font-variant-numeric: tabular-nums;
+      }
+      .endpoint:last-child {
+        text-align: end;
+      }
+      .filter-slider ion-range {
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+        --height: 24px;
+        --bar-height: 3px;
+        --bar-border-radius: 2px;
+        --knob-size: 0px;
+        --knob-box-shadow: none;
+      }
+      /* Ionic paints a white outline on the disabled knob that wins over
+         ::part() without !important. Size is already 0; this keeps that
+         outline from showing a handle. */
+      .filter-slider ion-range::part(knob) {
+        opacity: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
+      .filter-slider ion-range::part(pin) {
+        display: none;
+      }
+      .filter-unit.is-off .filter-name,
+      .filter-unit.is-off .filter-slider {
+        opacity: 0.45;
+      }
+
+      /* Short window: one line per filter. Text stays at the same size. */
+      @media (max-height: 700px) {
+        .filter-unit {
+          grid-template-columns: 22px minmax(7.5rem, 9.5rem) minmax(2.5rem, 1fr) auto;
+          grid-template-areas: 'icon name slider toggle';
+          min-height: 44px;
+          padding: 2px 12px;
+          column-gap: 10px;
+          row-gap: 0;
+        }
+        .filter-toggle-only {
+          grid-template-areas: 'icon name . toggle';
+          min-height: 44px;
+        }
+        .filter-slider {
+          margin-inline-start: 0;
+          min-height: 32px;
+          gap: 6px;
+        }
+      }
+
+      @media (max-height: 700px) and (max-width: 420px) {
+        .filter-unit {
+          grid-template-columns: 22px minmax(6.5rem, 7.5rem) minmax(1.875rem, 1fr) auto;
+          column-gap: 6px;
+          padding-inline: 10px;
+        }
+      }
+
+      @media (max-height: 480px) {
+        .filters-list {
+          padding-top: 0;
+        }
+        .filter-unit {
+          min-height: 38px;
+          column-gap: 6px;
+        }
+        .filter-toggle-only {
+          min-height: 38px;
+        }
+        .filter-slider {
+          min-height: 28px;
+        }
+        .filter-slider ion-range {
+          --height: 22px;
+        }
       }
     `,
   ],
@@ -184,7 +234,6 @@ export class FiltersSettingsComponent {
   private readonly settings = inject(SettingsService);
 
   public readonly sliderRows = SLIDER_ROWS;
-  public readonly smoothOptions = SMOOTH_OPTIONS;
   public readonly bounds = FILTER_BOUNDS;
 
   /** Live snapshot of the filters object — recomputed whenever settings change. */
@@ -197,8 +246,6 @@ export class FiltersSettingsComponent {
   public getValue(key: Exclude<keyof FilterSettings, 'imageSmooth' | 'grayscale'>): number {
     return this.filters()[key].value;
   }
-
-  public readonly imageSmoothMethod = computed(() => this.filters().imageSmooth.method);
 
   /** Grayscale is a toggle-only filter (no value). */
   public readonly grayscaleEnabled = computed(() => this.filters().grayscale.enabled);
@@ -222,14 +269,6 @@ export class FiltersSettingsComponent {
     const raw = firstNumeric(event.detail.value);
     const current = this.filters()[key];
     this.settings.setFilter(key, current.enabled, raw);
-  }
-
-  public onImageSmoothMethodChange(event: CustomEvent<{ value: ImageSmoothMethod | undefined }>): void {
-    const v = event.detail.value;
-    if (v === undefined) return;
-    if (v === 'none' || v === 'nearest-neighbor') {
-      this.settings.setImageSmoothMethod(v);
-    }
   }
 }
 
