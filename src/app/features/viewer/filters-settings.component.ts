@@ -112,7 +112,6 @@ const SLIDER_ROWS: readonly SliderRow[] = [
         row-gap: 2px;
         min-height: 64px;
         padding: 8px 16px 6px;
-        border-bottom: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.08));
       }
       .filter-toggle-only {
         grid-template-areas: 'icon name toggle';
